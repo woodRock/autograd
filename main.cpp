@@ -351,18 +351,16 @@ int main() {
 
         // Create a network for XOR
         auto model = std::make_shared<Sequential>();
-        model->add(std::make_shared<Linear>(2, 8, true));  // Input -> 4 hidden neurons
+        model->add(std::make_shared<Linear>(2, 4, true));  // Input -> 4 hidden neurons
         model->add(std::make_shared<ReLU>());
-        model->add(std::make_shared<Linear>(8, 8, true));  // Input -> 4 hidden neurons
-        model->add(std::make_shared<ReLU>());
-        model->add(std::make_shared<Linear>(8, 1, true));  // 4 hidden -> 1 output
+        model->add(std::make_shared<Linear>(4, 1, true));  // 4 hidden -> 1 output
         model->add(std::make_shared<Sigmoid>());
 
         auto parameters = model->get_parameters();
-        SGD optimizer(parameters, 0.001f);
+        SGD optimizer(parameters, 0.01f);
 
         // Training loop with multiple epochs
-        const size_t epochs = 2000;
+        const size_t epochs = 10000;
         const size_t print_every = 1000;
 
         for (size_t epoch = 0; epoch < epochs; epoch++) {
@@ -370,10 +368,21 @@ int main() {
 
             optimizer.zero_grad();
 
+            // Shuffle the dataset.
+            std::vector<size_t> indices(inputs.size());
+            std::iota(indices.begin(), indices.end(), 0);
+            std::random_shuffle(indices.begin(), indices.end());
+            std::vector<std::shared_ptr<Tensor>> shuffled_inputs(inputs.size());
+            std::vector<std::shared_ptr<Tensor>> shuffled_targets(targets.size());
+            for (size_t i = 0; i < inputs.size(); i++) {
+                shuffled_inputs[i] = inputs[indices[i]];
+                shuffled_targets[i] = targets[indices[i]];
+            }
+
             // Train on all XOR patterns
             for (size_t i = 0; i < inputs.size(); i++) {
-                auto output = model->forward(inputs[i]);
-                auto loss = Tensor::binary_cross_entropy(output, targets[i]);
+                auto output = model->forward(shuffled_inputs[i]);
+                auto loss = Tensor::binary_cross_entropy(output, shuffled_targets[i]);
                 total_loss += loss->data[0];
 
                 // Set the gradient for the loss.
@@ -393,20 +402,11 @@ int main() {
                 for (size_t i = 0; i < inputs.size(); i++) {
                     auto output = model->forward(inputs[i]);
                     std::cout << "Input: " << *inputs[i] 
-                            << " Target: " << *targets[i] 
-                            << " Output: " << *output << std::endl;
+                            << " Expected: " << *targets[i] 
+                            << " Predicted: " << *output 
+                            << " (Rounded: " << (output->data[0] > 0.5f ? 1 : 0) << ")" 
+                            << std::endl;
                 }
-            }
-
-            // Test the trained model
-            std::cout << "\nTesting XOR predictions:" << std::endl;
-            for (size_t i = 0; i < inputs.size(); i++) {
-                auto output = model->forward(inputs[i]);
-                std::cout << "Input: " << *inputs[i] 
-                        << " Expected: " << *targets[i] 
-                        << " Predicted: " << *output 
-                        << " (Rounded: " << (output->data[0] > 0.5f ? 1 : 0) << ")" 
-                        << std::endl;
             }
         }
 
