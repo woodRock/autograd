@@ -5,21 +5,29 @@
 #include <memory>
 #include <numeric>
 #include <algorithm>
+#include <cassert>
 
 class Tensor : public std::enable_shared_from_this<Tensor> {
 private:
-    static std::vector<float> generate_random_data(size_t size) {
-        std::random_device rd;
-        std::mt19937 gen(rd());
+    static std::mt19937& get_generator() {
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
+        return gen;
+    }
+    
+    static std::vector<float> generate_random_data(size_t rows, size_t cols) {
         std::normal_distribution<float> dist(0.0f, 1.0f);
-        std::vector<float> data(size);
-        for (size_t i = 0; i < size; ++i) {
+        std::vector<float> data(rows * cols);
+        auto& gen = get_generator();
+        for (size_t i = 0; i < rows * cols; ++i) {
             data[i] = dist(gen);
         }
         return data;
     }
 
 public:
+    size_t rows;
+    size_t cols;
     std::vector<float> data;
     std::vector<float> grad;
     std::vector<std::shared_ptr<Tensor>> children;
@@ -27,117 +35,203 @@ public:
     bool requires_grad;
     std::string creation_op;
 
-    Tensor() : requires_grad(false), creation_op("") {}
-
-    Tensor(const std::vector<float>& data, bool requires_grad = false, std::string creation_op = "") 
-        : data(data), requires_grad(requires_grad), creation_op(creation_op) {
-        grad = std::vector<float>(data.size(), 0);
+    Tensor(size_t rows, size_t cols, bool requires_grad = false, std::string creation_op = "")
+        : rows(rows), cols(cols), requires_grad(requires_grad), creation_op(creation_op) {
+        data = generate_random_data(rows, cols);
+        grad = std::vector<float>(rows * cols, 0);
     }
 
-    Tensor(size_t size, bool requires_grad = false, std::string creation_op = "") 
-        : data(generate_random_data(size)), requires_grad(requires_grad), creation_op(creation_op) {
-        if (requires_grad) {
-            grad = std::vector<float>(size, 0);
-        }
+    Tensor(const std::vector<float>& data, size_t rows, size_t cols, bool requires_grad = false, std::string creation_op = "")
+        : data(data), rows(rows), cols(cols), requires_grad(requires_grad), creation_op(creation_op) {
+        grad = std::vector<float>(rows * cols, 0);
+    }
+
+    // Add destructor to break cycles
+    ~Tensor() {
+        parents.clear();
+        children.clear();
+    }
+    
+    // Add method to explicitly break references
+    void clear_graph() {
+        parents.clear();
+        children.clear();
+        grad.clear();
     }
 
     void backward() {
         if (!requires_grad) return;
 
         if (grad.empty()) {
-            grad = std::vector<float>(data.size(), 1);
+            grad = std::vector<float>(rows * cols, 1.0f);
         }
 
         if (creation_op == "add") {
             for (const auto& parent : parents) {
                 for (size_t i = 0; i < parent->data.size(); i++) {
-                    parent->grad[i] += grad[i];
+                    parent->grad[i] += grad[i];  // This one was correct already
                 }
                 parent->backward();
             }
-        }  
+        }
         if (creation_op == "mul") {
-            if (parents.size() == 2) {    
-                auto weights = parents[0];
-                auto inputs = parents[1];
-                size_t m = weights->data.size() / inputs->data.size();
-                size_t n = inputs->data.size();
-                
-                // Gradient with respect to weights
-                for (size_t i = 0; i < m; i++) {
-                    for (size_t j = 0; j < n; j++) {
-                        weights->grad[i * n + j] += grad[i] * inputs->data[j];
+            auto weights = parents[0];
+            auto inputs = parents[1];
+            
+            // Weight gradients
+            auto inputs_T = inputs->transpose();
+            for (size_t i = 0; i < weights->rows; i++) {
+                for (size_t j = 0; j < weights->cols; j++) {
+                    float sum = 0.0f;
+                    for (size_t k = 0; k < inputs->rows; k++) {
+                        sum += inputs_T->data[j * inputs_T->cols + k] * grad[k * cols + i];
                     }
+                    weights->grad[i * weights->cols + j] += sum;
                 }
-                
-                // Gradient with respect to inputs
-                for (size_t j = 0; j < n; j++) {
-                    for (size_t i = 0; i < m; i++) {
-                        inputs->grad[j] += grad[i] * weights->data[i * n + j];
+            }
+            
+            // Input gradients
+            auto weights_T = weights->transpose();
+            for (size_t i = 0; i < inputs->rows; i++) {
+                for (size_t j = 0; j < inputs->cols; j++) {
+                    float sum = 0.0f;
+                    for (size_t k = 0; k < grad.size(); k++) {
+                        sum += grad[k] * weights_T->data[j * weights_T->cols + k];
                     }
+                    inputs->grad[i * inputs->cols + j] += sum;
                 }
+            }
+        }
+        else if (creation_op == "sigmoid") {
+            // Fixed: Propagate to parent instead of modifying own gradient
+            for (size_t i = 0; i < data.size(); i++) {
+                float sigmoid_val = data[i];
+                parents[0]->grad[i] += grad[i] * sigmoid_val * (1.0f - sigmoid_val);
+            }
+            parents[0]->backward();
+        }
+        else if (creation_op == "relu") {
+            // Fixed: Propagate to parent instead of modifying own gradient
+            for (size_t i = 0; i < data.size(); i++) {
+                parents[0]->grad[i] += grad[i] * (data[i] > 0 ? 1 : 0);
+            }
+            parents[0]->backward();
+        }
+        else if (creation_op == "bce") {
+            auto pred = parents[0];
+            auto target = parents[1];
+            
+            // Fixed: Propagate to parent instead of modifying own gradient
+            for (size_t i = 0; i < pred->data.size(); i++) {
+                float p = std::max(std::min(pred->data[i], 1.0f - 1e-15f), 1e-15f);
+                float t = target->data[i];
                 
-                weights->backward();
-                inputs->backward();
+                // Add gradient clipping
+                float raw_grad = (p - t) / (p * (1 - p));
+                float clipped_grad = std::clamp(raw_grad, -10.0f, 10.0f);
+                pred->grad[i] += grad[i] * clipped_grad;
             }
+            
+            pred->backward();
         }
-        if (creation_op == "relu") {
-            auto parent = parents[0];
-            for (size_t j = 0; j < parent->data.size(); j++) {
-                parent->grad[j] += grad[j] * (data[j] > 0 ? 1 : 0);
-            }
-            parent->backward();
-        }
-        if (creation_op == "sigmoid") {
-            if (!parents.empty()) {
-                auto parent = parents[0];
-                for (size_t j = 0; j < parent->data.size(); j++) {
-                    float sig = 1.0f / (1.0f + std::exp(-data[j])); // Use data[j] instead of parent->data[j]
-                    parent->grad[j] += grad[j] * sig * (1.0f - sig);
+        else if (creation_op == "transpose") {
+            // Fixed: Need to properly propagate gradients for transpose
+            for (size_t i = 0; i < rows; i++) {
+                for (size_t j = 0; j < cols; j++) {
+                    parents[0]->grad[j * rows + i] += grad[i * cols + j];
                 }
-                parent->backward();
             }
+            parents[0]->backward();
         }
-        if (creation_op == "bce") {
-            if (parents.size() >= 2) {
-                auto pred = parents[0];
-                auto target = parents[1];
-                for (size_t j = 0; j < pred->data.size(); j++) {
-                    float p = std::max(std::min(pred->data[j], 1.0f - 1e-7f), 1e-7f);
-                    pred->grad[j] += grad[j] * (p - target->data[j]) / (p * (1 - p));
-                }
-                pred->backward();
+        else if (creation_op == "sum") {
+            // Fixed: Need to properly propagate gradients for sum
+            for (size_t i = 0; i < parents[0]->data.size(); i++) {
+                parents[0]->grad[i] += grad[0];  // Broadcast the gradient
             }
+            parents[0]->backward();
+        }
+        else if (creation_op == "expand") {
+            // Fixed: Need to properly propagate gradients for expand
+            // Sum up gradients for each copy
+            for (size_t i = 0; i < parents[0]->data.size(); i++) {
+                for (size_t j = 0; j < cols/parents[0]->cols; j++) {
+                    parents[0]->grad[i] += grad[i * (cols/parents[0]->cols) + j];
+                }
+            }
+            parents[0]->backward();
         }
     }
 
     static std::shared_ptr<Tensor> add(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b) {
+        if (a->rows != b->rows || a->cols != b->cols) {
+            throw std::runtime_error("Tensor shapes must match for addition");
+        }
         std::vector<float> new_data(a->data.size());
         for (size_t i = 0; i < a->data.size(); i++) {
             new_data[i] = a->data[i] + b->data[i];
         }
-        auto result = std::make_shared<Tensor>(new_data, a->requires_grad || b->requires_grad, "add");
+        auto result = std::make_shared<Tensor>(new_data, a->rows, a->cols, a->requires_grad || b->requires_grad, "add");
         result->parents.push_back(a);
         result->parents.push_back(b);
         return result;
     }
 
     static std::shared_ptr<Tensor> multiply(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b) {
-        // Assume a is the weight matrix (m x n) and b is the input vector (n x 1)
-        size_t m = a->data.size() / b->data.size(); // Number of rows in output
-        size_t n = b->data.size(); // Number of columns in weight matrix
-        
-        std::vector<float> new_data(m);
-        for (size_t i = 0; i < m; i++) {
-            new_data[i] = 0;
-            for (size_t j = 0; j < n; j++) {
-                new_data[i] += a->data[i * n + j] * b->data[j];
+        if (a->cols != b->rows) {
+            throw std::runtime_error("Matrix dimensions are not aligned");
+        }
+        std::vector<float> new_data(a->rows * b->cols);
+        for (size_t i = 0; i < a->rows; i++) {
+            for (size_t j = 0; j < b->cols; j++) {
+                float sum = 0.0f;
+                for (size_t k = 0; k < a->cols; k++) {
+                    sum += a->data[i * a->cols + k] * b->data[k * b->cols + j];
+                }
+                new_data[i * b->cols + j] = sum;
             }
         }
-        
-        auto result = std::make_shared<Tensor>(new_data, a->requires_grad || b->requires_grad, "mul");
+
+        auto result = std::make_shared<Tensor>(new_data, a->rows, b->cols, a->requires_grad || b->requires_grad, "mul");
+                
         result->parents.push_back(a);
         result->parents.push_back(b);
+        return result;
+    }
+
+    std::shared_ptr<Tensor> sum() {
+        float sum = 0.0f;
+        for (size_t i = 0; i < data.size(); i++) {
+            sum += data[i];
+        }
+        auto result = std::make_shared<Tensor>(std::vector<float>{sum}, 1, 1, requires_grad, "sum");
+        result->parents.push_back(shared_from_this());
+        return result;
+    }
+
+    std::shared_ptr<Tensor> expand(size_t dim, size_t copies) {
+        if (dim > 1) {
+            throw std::runtime_error("Not implemented");
+        }
+        std::vector<float> new_data(data.size() * copies);
+        for (size_t i = 0; i < data.size(); i++) {
+            for (size_t j = 0; j < copies; j++) {
+                new_data[i * copies + j] = data[i];
+            }
+        }
+        auto result = std::make_shared<Tensor>(new_data, rows, cols * copies, requires_grad, "expand");
+        result->parents.push_back(shared_from_this());
+        return result;
+    }
+
+    std::shared_ptr<Tensor> transpose() {
+        std::vector<float> new_data(data.size());
+        for (size_t i = 0; i < rows; i++) {
+            for (size_t j = 0; j < cols; j++) {
+                new_data[j * rows + i] = data[i * cols + j];
+            }
+        }
+        auto result = std::make_shared<Tensor>(new_data, cols, rows, requires_grad, "transpose");
+        result->parents.push_back(shared_from_this());
         return result;
     }
 
@@ -146,8 +240,8 @@ public:
         for (size_t i = 0; i < data.size(); i++) {
             new_data[i] = std::max(0.0f, data[i]);
         }
-        auto result = std::make_shared<Tensor>(new_data, requires_grad, "relu");
-        result->parents.push_back(this->shared_from_this());
+        auto result = std::make_shared<Tensor>(new_data, rows, cols, requires_grad, "relu");
+        result->parents.push_back(shared_from_this());
         return result;
     }
 
@@ -156,23 +250,18 @@ public:
         for (size_t i = 0; i < data.size(); i++) {
             new_data[i] = 1.0f / (1.0f + std::exp(-data[i]));
         }
-        auto result = std::make_shared<Tensor>(new_data, requires_grad, "sigmoid");
-        result->parents.push_back(this->shared_from_this());
-
+        auto result = std::make_shared<Tensor>(new_data, rows, cols, requires_grad, "sigmoid");
+        result->parents.push_back(shared_from_this());
         return result;
     }
 
     static std::shared_ptr<Tensor> binary_cross_entropy(std::shared_ptr<Tensor> pred, std::shared_ptr<Tensor> target) {
-        std::vector<float> new_data(1);  // BCE returns scalar loss
-        float total_loss = 0.0f;
+        std::vector<float> new_data(pred->data.size());
         for (size_t i = 0; i < pred->data.size(); i++) {
-            float p = std::max(std::min(pred->data[i], 1.0f - 1e-7f), 1e-7f);
-            total_loss += -(target->data[i] * std::log(p) + (1 - target->data[i]) * std::log(1 - p));
+            float p = std::max(std::min(pred->data[i], 1.0f - 1e-15f), 1e-15f);
+            new_data[i] = -target->data[i] * std::log(p) - (1 - target->data[i]) * std::log(1 - p);
         }
-        new_data[0] = total_loss / pred->data.size();  // Average loss
-
-        auto result = std::make_shared<Tensor>(new_data, pred->requires_grad, "bce");
-
+        auto result = std::make_shared<Tensor>(new_data, pred->rows, pred->cols, pred->requires_grad, "bce");
         result->parents.push_back(pred);
         result->parents.push_back(target);
         return result;
@@ -182,25 +271,49 @@ public:
         std::fill(grad.begin(), grad.end(), 0.0f);
     }
 
+    std::vector<size_t> shape() {
+        return {rows, cols};
+    }
+
     friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
+        os << "tensor(";
         os << "[";
-        for (size_t i = 0; i < tensor.data.size(); i++) {
-            if (i > 0) os << ", ";
-            os << tensor.data[i];
+        for (size_t i = 0; i < tensor.rows; ++i) {
+            os << "[";
+            for (size_t j = 0; j < tensor.cols; ++j) {
+                if (j > 0) os << ", ";
+                os << tensor.data[i * tensor.cols + j];
+            }
+            os << "]";
+            if (i < tensor.rows - 1) os << ",\n";
         }
         os << "]";
+        if (tensor.requires_grad) {
+            os << ", requires_grad=True";
+        }
+        os << ")";
         return os;
     }
 
+
     void print_grad() {
+        // Print the gradients nicely in the tensor format.
+        std::cout << "tensor(";
         std::cout << "[";
-        for (size_t i = 0; i < grad.size(); i++) {
-            if (i > 0) std::cout << ", ";
-            std::cout << grad[i];
+        for (size_t i = 0; i < rows; ++i) {
+            std::cout << "[";
+            for (size_t j = 0; j < cols; ++j) {
+                if (j > 0) std::cout << ", ";
+                std::cout << grad[i * cols + j];
+            }
+            std::cout << "]";
+            if (i < rows - 1) std::cout << ",\n";
         }
         std::cout << "]";
+        std::cout << ")" << std::endl;
     }
 };
+
 
 class Layer {
 public:
@@ -251,9 +364,12 @@ public:
 
     void step() {
         for (auto& param : parameters) {
-            for (size_t i = 0; i < param->data.size(); ++i) {
-                param->data[i] -= learning_rate * param->grad[i];
+            if (param->requires_grad) {
+                for (size_t i = 0; i < param->data.size(); ++i) {
+                    param->data[i] -= learning_rate * param->grad[i];
+                }
             }
+            
         }
     }
 };
@@ -264,34 +380,20 @@ public:
     std::shared_ptr<Tensor> bias;
     bool use_bias;
 
-    Linear(size_t input_size, size_t output_size, bool use_bias = true) {
-        this->use_bias = use_bias;
-        // Kaiming initialization
-        float limit = std::sqrt(2.0f / input_size);
-        std::vector<float> weight_data(input_size * output_size);
-        std::vector<float> bias_data(output_size);
-
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::normal_distribution<float> dis(0.0f, limit);
-
-        for (auto& w : weight_data) {
-            w = dis(gen);
+    Linear(size_t input_size, size_t output_size, bool use_bias = true)
+        : use_bias(use_bias) {
+        weights = std::make_shared<Tensor>(input_size, output_size, true);
+        if (use_bias) {
+            bias = std::make_shared<Tensor>(1, output_size, true);
         }
-        for (auto& b : bias_data) {
-            b = dis(gen);
-        }
-
-        weights = std::make_shared<Tensor>(weight_data, true);
-        bias = std::make_shared<Tensor>(bias_data, true);
     }
 
     std::shared_ptr<Tensor> forward(std::shared_ptr<Tensor> input) override {
-        auto output = Tensor::multiply(weights, input);
+        auto output = Tensor::multiply(input, weights);
         if (use_bias) {
             output = Tensor::add(output, bias);
         }
-        return output;
+        return output; 
     }
 
     std::vector<std::shared_ptr<Tensor>> get_parameters() {
@@ -336,17 +438,16 @@ int main() {
     try {
         // Create the XOR dataset
         std::vector<std::shared_ptr<Tensor>> inputs = {
-            std::make_shared<Tensor>(std::vector<float>{0.0f, 0.0f}, true),
-            std::make_shared<Tensor>(std::vector<float>{0.0f, 1.0f}, true),
-            std::make_shared<Tensor>(std::vector<float>{1.0f, 0.0f}, true),
-            std::make_shared<Tensor>(std::vector<float>{1.0f, 1.0f}, true)
+            std::make_shared<Tensor>(std::vector<float>{0.0f, 0.0f}, 1, 2, true),
+            std::make_shared<Tensor>(std::vector<float>{0.0f, 1.0f}, 1, 2, true),
+            std::make_shared<Tensor>(std::vector<float>{1.0f, 0.0f}, 1, 2, true),
+            std::make_shared<Tensor>(std::vector<float>{1.0f, 1.0f}, 1, 2, true)
         };
-        
         std::vector<std::shared_ptr<Tensor>> targets = {
-            std::make_shared<Tensor>(std::vector<float>{0.0f}, false),
-            std::make_shared<Tensor>(std::vector<float>{1.0f}, false),
-            std::make_shared<Tensor>(std::vector<float>{1.0f}, false),
-            std::make_shared<Tensor>(std::vector<float>{0.0f}, false)
+            std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, false),
+            std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, false),
+            std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, false),
+            std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, false)
         };
 
         // Create a network for XOR
@@ -357,7 +458,13 @@ int main() {
         model->add(std::make_shared<Sigmoid>());
 
         auto parameters = model->get_parameters();
-        SGD optimizer(parameters, 0.01f);
+        SGD optimizer(parameters, 0.1f);
+
+        // Print the model parameters.
+        std::cout << "Model parameters:" << std::endl;
+        for (auto& param : parameters) {
+            std::cout << *param << std::endl;
+        }
 
         // Training loop with multiple epochs
         const size_t epochs = 10000;
@@ -382,6 +489,7 @@ int main() {
             // Train on all XOR patterns
             for (size_t i = 0; i < inputs.size(); i++) {
                 auto output = model->forward(shuffled_inputs[i]);
+
                 auto loss = Tensor::binary_cross_entropy(output, shuffled_targets[i]);
                 total_loss += loss->data[0];
 
