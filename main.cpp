@@ -66,6 +66,8 @@ public:
             grad = std::vector<float>(rows * cols, 1.0f);
         }
 
+        // std::cout << "Creation op: " << creation_op << std::endl;
+
         if (creation_op == "add") {
             for (const auto& parent : parents) {
                 for (size_t i = 0; i < parent->data.size(); i++) {
@@ -101,8 +103,11 @@ public:
                     inputs->grad[i * inputs->cols + j] += sum;
                 }
             }
+
+            weights->backward();
+            inputs->backward();
         }
-        else if (creation_op == "sigmoid") {
+        if (creation_op == "sigmoid") {
             // Fixed: Propagate to parent instead of modifying own gradient
             for (size_t i = 0; i < data.size(); i++) {
                 float sigmoid_val = data[i];
@@ -110,14 +115,14 @@ public:
             }
             parents[0]->backward();
         }
-        else if (creation_op == "relu") {
+        if (creation_op == "relu") {
             // Fixed: Propagate to parent instead of modifying own gradient
             for (size_t i = 0; i < data.size(); i++) {
                 parents[0]->grad[i] += grad[i] * (data[i] > 0 ? 1 : 0);
             }
             parents[0]->backward();
         }
-        else if (creation_op == "bce") {
+        if (creation_op == "bce") {
             auto pred = parents[0];
             auto target = parents[1];
             
@@ -134,7 +139,7 @@ public:
             
             pred->backward();
         }
-        else if (creation_op == "transpose") {
+        if (creation_op == "transpose") {
             // Fixed: Need to properly propagate gradients for transpose
             for (size_t i = 0; i < rows; i++) {
                 for (size_t j = 0; j < cols; j++) {
@@ -143,14 +148,14 @@ public:
             }
             parents[0]->backward();
         }
-        else if (creation_op == "sum") {
+        if (creation_op == "sum") {
             // Fixed: Need to properly propagate gradients for sum
             for (size_t i = 0; i < parents[0]->data.size(); i++) {
                 parents[0]->grad[i] += grad[0];  // Broadcast the gradient
             }
             parents[0]->backward();
         }
-        else if (creation_op == "expand") {
+        if (creation_op == "expand") {
             // Fixed: Need to properly propagate gradients for expand
             // Sum up gradients for each copy
             for (size_t i = 0; i < parents[0]->data.size(); i++) {
@@ -244,6 +249,7 @@ public:
         result->parents.push_back(shared_from_this());
         return result;
     }
+
 
     std::shared_ptr<Tensor> sigmoid() {
         std::vector<float> new_data(data.size());
@@ -458,7 +464,7 @@ int main() {
         model->add(std::make_shared<Sigmoid>());
 
         auto parameters = model->get_parameters();
-        SGD optimizer(parameters, 0.1f);
+        SGD optimizer(parameters, 0.001f);
 
         // Print the model parameters.
         std::cout << "Model parameters:" << std::endl;
@@ -467,8 +473,8 @@ int main() {
         }
 
         // Training loop with multiple epochs
-        const size_t epochs = 10000;
-        const size_t print_every = 1000;
+        const size_t epochs = 100;
+        const size_t print_every = 10;
 
         for (size_t epoch = 0; epoch < epochs; epoch++) {
             float total_loss = 0.0f;
@@ -489,7 +495,6 @@ int main() {
             // Train on all XOR patterns
             for (size_t i = 0; i < inputs.size(); i++) {
                 auto output = model->forward(shuffled_inputs[i]);
-
                 auto loss = Tensor::binary_cross_entropy(output, shuffled_targets[i]);
                 total_loss += loss->data[0];
 
