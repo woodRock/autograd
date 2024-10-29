@@ -11,7 +11,7 @@ private:
     static std::vector<float> generate_random_data(size_t size) {
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::normal_distribution<float> dist(0.0f, 1.0f);  // Changed variance for better initialization
+        std::normal_distribution<float> dist(0.0f, 1.0f);
         std::vector<float> data(size);
         for (size_t i = 0; i < size; ++i) {
             data[i] = dist(gen);
@@ -60,7 +60,6 @@ public:
             if (parents.size() == 2) {    
                 auto parent_a = parents[0];
                 auto parent_b = parents[1];  
-                // Matrix multiplication gradient
                 for (size_t i = 0; i < parent_a->data.size(); i++) {
                     parent_a->grad[i] += grad[0] * parent_b->data[0];
                 }
@@ -113,7 +112,6 @@ public:
     }
 
     static std::shared_ptr<Tensor> multiply(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b) {
-        // Matrix multiplication for 1D vectors
         std::vector<float> new_data(1);
         new_data[0] = std::inner_product(a->data.begin(), a->data.end(), b->data.begin(), 0.0f);
         auto result = std::make_shared<Tensor>(new_data, a->requires_grad || b->requires_grad, "mul");
@@ -334,31 +332,33 @@ int main() {
 
         // Create a network for XOR
         auto model = std::make_shared<Sequential>();
-        model->add(std::make_shared<Linear>(2, 4)); // Input layer -> Hidden layer (increased to 4 neurons)
+        model->add(std::make_shared<Linear>(2, 2)); // Input layer -> Hidden layer (increased to 4 neurons)
         model->add(std::make_shared<ReLU>());
-        model->add(std::make_shared<Linear>(4, 1)); // Hidden layer -> Output
+        model->add(std::make_shared<Linear>(2, 1)); // Hidden layer -> Output
         model->add(std::make_shared<Sigmoid>());
 
         auto parameters = model->get_parameters();
-        SGD optimizer(parameters, 0.01f);
+        SGD optimizer(parameters, 0.1f);
 
         // Training loop with multiple epochs
-        const size_t epochs = 100000;
+        const size_t epochs = 10000;
         const size_t print_every = 1000;
 
         for (size_t epoch = 0; epoch < epochs; epoch++) {
             float total_loss = 0.0f;
 
             optimizer.zero_grad();
-
+            
             // Train on all XOR patterns
             for (size_t i = 0; i < inputs.size(); i++) {
-
                 auto output = model->forward(inputs[i]);
                 auto loss = Tensor::binary_cross_entropy(output, targets[i]);
                 total_loss += loss->data[0];
 
-                std::fill(loss->grad.begin(), loss->grad.end(), 1.0f);
+                // Set the gradient for the loss.
+                loss->grad = std::vector<float>(loss->data.size(), 1.0f);
+
+                // Backpropagate the error.
                 loss->backward();
             }
 
