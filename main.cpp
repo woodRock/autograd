@@ -58,16 +58,27 @@ public:
         }  
         if (creation_op == "mul") {
             if (parents.size() == 2) {    
-                auto parent_a = parents[0];
-                auto parent_b = parents[1];  
-                for (size_t i = 0; i < parent_a->data.size(); i++) {
-                    parent_a->grad[i] += grad[0] * parent_b->data[0];
+                auto weights = parents[0];
+                auto inputs = parents[1];
+                size_t m = weights->data.size() / inputs->data.size();
+                size_t n = inputs->data.size();
+                
+                // Gradient with respect to weights
+                for (size_t i = 0; i < m; i++) {
+                    for (size_t j = 0; j < n; j++) {
+                        weights->grad[i * n + j] += grad[i] * inputs->data[j];
+                    }
                 }
-                parent_b->grad[0] += std::inner_product(parent_a->data.begin(), 
-                                                        parent_a->data.end(), 
-                                                        grad.begin(), 0.0f);
-                parent_b->backward();
-                parent_b->backward();
+                
+                // Gradient with respect to inputs
+                for (size_t j = 0; j < n; j++) {
+                    for (size_t i = 0; i < m; i++) {
+                        inputs->grad[j] += grad[i] * weights->data[i * n + j];
+                    }
+                }
+                
+                weights->backward();
+                inputs->backward();
             }
         }
         if (creation_op == "relu") {
@@ -87,7 +98,7 @@ public:
                 parent->backward();
             }
         }
-        else if (creation_op == "bce") {
+        if (creation_op == "bce") {
             if (parents.size() >= 2) {
                 auto pred = parents[0];
                 auto target = parents[1];
@@ -112,8 +123,18 @@ public:
     }
 
     static std::shared_ptr<Tensor> multiply(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b) {
-        std::vector<float> new_data(1);
-        new_data[0] = std::inner_product(a->data.begin(), a->data.end(), b->data.begin(), 0.0f);
+        // Assume a is the weight matrix (m x n) and b is the input vector (n x 1)
+        size_t m = a->data.size() / b->data.size(); // Number of rows in output
+        size_t n = b->data.size(); // Number of columns in weight matrix
+        
+        std::vector<float> new_data(m);
+        for (size_t i = 0; i < m; i++) {
+            new_data[i] = 0;
+            for (size_t j = 0; j < n; j++) {
+                new_data[i] += a->data[i * n + j] * b->data[j];
+            }
+        }
+        
         auto result = std::make_shared<Tensor>(new_data, a->requires_grad || b->requires_grad, "mul");
         result->parents.push_back(a);
         result->parents.push_back(b);
@@ -222,7 +243,6 @@ public:
 
     void zero_grad() {
         for (auto& param : parameters) {
-            std::fill(param->grad.begin(), param->grad.end(), 0.0f);
             if (param->requires_grad) {
                 std::fill(param->grad.begin(), param->grad.end(), 0.0f);
             }
@@ -243,18 +263,17 @@ public:
     std::shared_ptr<Tensor> weights;
     std::shared_ptr<Tensor> bias;
     bool use_bias;
-    size_t input_size;
-    size_t output_size;
 
-    Linear(size_t input_size, size_t output_size) {
-        // Xavier initialization
-        float limit = std::sqrt(6.0f / (input_size + output_size));
+    Linear(size_t input_size, size_t output_size, bool use_bias = true) {
+        this->use_bias = use_bias;
+        // Kaiming initialization
+        float limit = std::sqrt(2.0f / input_size);
         std::vector<float> weight_data(input_size * output_size);
         std::vector<float> bias_data(output_size);
 
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_real_distribution<> dis(-limit, limit);
+        std::normal_distribution<float> dis(0.0f, limit);
 
         for (auto& w : weight_data) {
             w = dis(gen);
@@ -263,8 +282,8 @@ public:
             b = dis(gen);
         }
 
-        weights = std::make_shared<Tensor>(weight_data, false);
-        bias = std::make_shared<Tensor>(bias_data, false);
+        weights = std::make_shared<Tensor>(weight_data, true);
+        bias = std::make_shared<Tensor>(bias_data, true);
     }
 
     std::shared_ptr<Tensor> forward(std::shared_ptr<Tensor> input) override {
@@ -332,23 +351,25 @@ int main() {
 
         // Create a network for XOR
         auto model = std::make_shared<Sequential>();
-        model->add(std::make_shared<Linear>(2, 2)); // Input layer -> Hidden layer (increased to 4 neurons)
+        model->add(std::make_shared<Linear>(2, 8, true));  // Input -> 4 hidden neurons
         model->add(std::make_shared<ReLU>());
-        model->add(std::make_shared<Linear>(2, 1)); // Hidden layer -> Output
+        model->add(std::make_shared<Linear>(8, 8, true));  // Input -> 4 hidden neurons
+        model->add(std::make_shared<ReLU>());
+        model->add(std::make_shared<Linear>(8, 1, true));  // 4 hidden -> 1 output
         model->add(std::make_shared<Sigmoid>());
 
         auto parameters = model->get_parameters();
-        SGD optimizer(parameters, 0.1f);
+        SGD optimizer(parameters, 0.001f);
 
         // Training loop with multiple epochs
-        const size_t epochs = 10000;
+        const size_t epochs = 2000;
         const size_t print_every = 1000;
 
         for (size_t epoch = 0; epoch < epochs; epoch++) {
             float total_loss = 0.0f;
 
             optimizer.zero_grad();
-            
+
             // Train on all XOR patterns
             for (size_t i = 0; i < inputs.size(); i++) {
                 auto output = model->forward(inputs[i]);
@@ -372,21 +393,21 @@ int main() {
                 for (size_t i = 0; i < inputs.size(); i++) {
                     auto output = model->forward(inputs[i]);
                     std::cout << "Input: " << *inputs[i] 
-                             << " Target: " << *targets[i] 
-                             << " Output: " << *output << std::endl;
+                            << " Target: " << *targets[i] 
+                            << " Output: " << *output << std::endl;
                 }
             }
-        }
 
-        // Test the trained model
-        std::cout << "\nTesting XOR predictions:" << std::endl;
-        for (size_t i = 0; i < inputs.size(); i++) {
-            auto output = model->forward(inputs[i]);
-            std::cout << "Input: " << *inputs[i] 
-                     << " Expected: " << *targets[i] 
-                     << " Predicted: " << *output 
-                     << " (Rounded: " << (output->data[0] > 0.5f ? 1 : 0) << ")" 
-                     << std::endl;
+            // Test the trained model
+            std::cout << "\nTesting XOR predictions:" << std::endl;
+            for (size_t i = 0; i < inputs.size(); i++) {
+                auto output = model->forward(inputs[i]);
+                std::cout << "Input: " << *inputs[i] 
+                        << " Expected: " << *targets[i] 
+                        << " Predicted: " << *output 
+                        << " (Rounded: " << (output->data[0] > 0.5f ? 1 : 0) << ")" 
+                        << std::endl;
+            }
         }
 
     } catch (const std::exception& e) {
