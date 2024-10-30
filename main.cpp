@@ -16,7 +16,9 @@ private:
     }
     
     static std::vector<float> generate_random_data(size_t rows, size_t cols) {
-        std::normal_distribution<float> dist(0.0f, 1.0f);
+        // Xavier/Glorot initialization
+        float limit = std::sqrt(6.0f / (rows + cols));
+        std::uniform_real_distribution<float> dist(-limit, limit);
         std::vector<float> data(rows * cols);
         auto& gen = get_generator();
         for (size_t i = 0; i < rows * cols; ++i) {
@@ -66,59 +68,53 @@ public:
             grad = std::vector<float>(rows * cols, 1.0f);
         }
 
-        // std::cout << "Creation op: " << creation_op << std::endl;
-
         if (creation_op == "add") {
             for (const auto& parent : parents) {
                 for (size_t i = 0; i < parent->data.size(); i++) {
-                    parent->grad[i] += grad[i];  // This one was correct already
+                    if (i < grad.size()) {
+                        parent->grad[i] += grad[i];  // Ensure index is within bounds
+                    }
                 }
                 parent->backward();
             }
         }
+
         if (creation_op == "mul") {
             auto weights = parents[0];
             auto inputs = parents[1];
             
-            // Weight gradients
-            auto inputs_T = inputs->transpose();
+            // Combine loops for better cache utilization
             for (size_t i = 0; i < weights->rows; i++) {
                 for (size_t j = 0; j < weights->cols; j++) {
-                    float sum = 0.0f;
+                    float weight_grad = 0.0f;
                     for (size_t k = 0; k < inputs->rows; k++) {
-                        sum += inputs_T->data[j * inputs_T->cols + k] * grad[k * cols + i];
+                        if (k * inputs->cols + j < inputs->data.size() && k * weights->cols + i < grad.size()) {
+                            weight_grad += inputs->data[k * inputs->cols + j] * grad[k * weights->cols + i];
+                            if (k * inputs->cols + j < inputs->grad.size() && i * weights->cols + j < weights->data.size()) {
+                                inputs->grad[k * inputs->cols + j] += grad[k * weights->cols + i] * weights->data[i * weights->cols + j];
+                            }
+                        }
                     }
-                    weights->grad[i * weights->cols + j] += sum;
+                    if (i * weights->cols + j < weights->grad.size()) {
+                        weights->grad[i * weights->cols + j] += weight_grad;
+                    }
                 }
             }
-            
-            // Input gradients
-            auto weights_T = weights->transpose();
-            for (size_t i = 0; i < inputs->rows; i++) {
-                for (size_t j = 0; j < inputs->cols; j++) {
-                    float sum = 0.0f;
-                    for (size_t k = 0; k < grad.size(); k++) {
-                        sum += grad[k] * weights_T->data[j * weights_T->cols + k];
-                    }
-                    inputs->grad[i * inputs->cols + j] += sum;
-                }
-            }
-
             weights->backward();
             inputs->backward();
         }
         if (creation_op == "sigmoid") {
-            // Fixed: Propagate to parent instead of modifying own gradient
             for (size_t i = 0; i < data.size(); i++) {
-                float sigmoid_val = data[i];
-                parents[0]->grad[i] += grad[i] * sigmoid_val * (1.0f - sigmoid_val);
+                if (i < grad.size()) {
+                    float sigmoid_val = data[i];
+                    parents[0]->grad[i] += grad[i] * sigmoid_val * (1.0f - sigmoid_val);
+                }
             }
             parents[0]->backward();
         }
         if (creation_op == "relu") {
-            // Fixed: Propagate to parent instead of modifying own gradient
             for (size_t i = 0; i < data.size(); i++) {
-                parents[0]->grad[i] += grad[i] * (data[i] > 0 ? 1 : 0);
+                parents[0]->grad[i] += grad[i] * (data[i] > 0 ? 1.0f : 0.0f);
             }
             parents[0]->backward();
         }
@@ -126,21 +122,14 @@ public:
             auto pred = parents[0];
             auto target = parents[1];
             
-            // Fixed: Propagate to parent instead of modifying own gradient
             for (size_t i = 0; i < pred->data.size(); i++) {
                 float p = std::max(std::min(pred->data[i], 1.0f - 1e-15f), 1e-15f);
                 float t = target->data[i];
-                
-                // Add gradient clipping
-                float raw_grad = (p - t) / (p * (1 - p));
-                float clipped_grad = std::clamp(raw_grad, -10.0f, 10.0f);
-                pred->grad[i] += grad[i] * clipped_grad;
+                pred->grad[i] += grad[i] * (p - t);
             }
-            
             pred->backward();
         }
         if (creation_op == "transpose") {
-            // Fixed: Need to properly propagate gradients for transpose
             for (size_t i = 0; i < rows; i++) {
                 for (size_t j = 0; j < cols; j++) {
                     parents[0]->grad[j * rows + i] += grad[i * cols + j];
@@ -149,14 +138,12 @@ public:
             parents[0]->backward();
         }
         if (creation_op == "sum") {
-            // Fixed: Need to properly propagate gradients for sum
             for (size_t i = 0; i < parents[0]->data.size(); i++) {
                 parents[0]->grad[i] += grad[0];  // Broadcast the gradient
             }
             parents[0]->backward();
         }
         if (creation_op == "expand") {
-            // Fixed: Need to properly propagate gradients for expand
             // Sum up gradients for each copy
             for (size_t i = 0; i < parents[0]->data.size(); i++) {
                 for (size_t j = 0; j < cols/parents[0]->cols; j++) {
@@ -164,6 +151,21 @@ public:
                 }
             }
             parents[0]->backward();
+        }
+    }
+
+    // Add debug printing function to help track gradient flow
+    void debug_gradient_flow() {
+        std::cout << "Operation: " << creation_op << std::endl;
+        std::cout << "Has gradient: " << (grad.size() > 0) << std::endl;
+        std::cout << "Number of parents: " << parents.size() << std::endl;
+        std::cout << "Number of children: " << children.size() << std::endl;
+        if (!grad.empty()) {
+            std::cout << "Gradient values: ";
+            for (float g : grad) {
+                std::cout << g << " ";
+            }
+            std::cout << std::endl;
         }
     }
 
@@ -185,6 +187,7 @@ public:
         if (a->cols != b->rows) {
             throw std::runtime_error("Matrix dimensions are not aligned");
         }
+
         std::vector<float> new_data(a->rows * b->cols);
         for (size_t i = 0; i < a->rows; i++) {
             for (size_t j = 0; j < b->cols; j++) {
@@ -197,7 +200,6 @@ public:
         }
 
         auto result = std::make_shared<Tensor>(new_data, a->rows, b->cols, a->requires_grad || b->requires_grad, "mul");
-                
         result->parents.push_back(a);
         result->parents.push_back(b);
         return result;
@@ -356,9 +358,10 @@ class SGD {
 public:
     std::vector<std::shared_ptr<Tensor>> parameters;
     float learning_rate;
+    float max_grad_norm;  // Added gradient clipping
 
-    SGD(std::vector<std::shared_ptr<Tensor>> parameters, float learning_rate)
-        : parameters(parameters), learning_rate(learning_rate) {}
+    SGD(std::vector<std::shared_ptr<Tensor>> parameters, float learning_rate, float max_grad_norm = 1.0f)
+        : parameters(parameters), learning_rate(learning_rate), max_grad_norm(max_grad_norm) {}
 
     void zero_grad() {
         for (auto& param : parameters) {
@@ -375,7 +378,6 @@ public:
                     param->data[i] -= learning_rate * param->grad[i];
                 }
             }
-            
         }
     }
 };
@@ -388,18 +390,21 @@ public:
 
     Linear(size_t input_size, size_t output_size, bool use_bias = true)
         : use_bias(use_bias) {
-        weights = std::make_shared<Tensor>(input_size, output_size, true);
+        weights = std::make_shared<Tensor>(output_size, input_size, true, "linear");  // Note: Transposed weight matrix
         if (use_bias) {
-            bias = std::make_shared<Tensor>(1, output_size, true);
+            bias = std::make_shared<Tensor>(1, output_size, true, "bias");
         }
     }
 
     std::shared_ptr<Tensor> forward(std::shared_ptr<Tensor> input) override {
-        auto output = Tensor::multiply(input, weights);
+        auto weights_T = weights->transpose();
+        auto output = Tensor::multiply(input, weights_T);
         if (use_bias) {
-            output = Tensor::add(output, bias);
+            // Expand bias to match batch size
+            auto expanded_bias = bias->expand(1, input->rows);
+            output = Tensor::add(output, expanded_bias);
         }
-        return output; 
+        return output;
     }
 
     std::vector<std::shared_ptr<Tensor>> get_parameters() {
@@ -444,10 +449,10 @@ int main() {
     try {
         // Create the XOR dataset
         std::vector<std::shared_ptr<Tensor>> inputs = {
-            std::make_shared<Tensor>(std::vector<float>{0.0f, 0.0f}, 1, 2, true),
-            std::make_shared<Tensor>(std::vector<float>{0.0f, 1.0f}, 1, 2, true),
-            std::make_shared<Tensor>(std::vector<float>{1.0f, 0.0f}, 1, 2, true),
-            std::make_shared<Tensor>(std::vector<float>{1.0f, 1.0f}, 1, 2, true)
+            std::make_shared<Tensor>(std::vector<float>{0.0f, 0.0f}, 1, 2, true, "input"),
+            std::make_shared<Tensor>(std::vector<float>{0.0f, 1.0f}, 1, 2, true, "input"),
+            std::make_shared<Tensor>(std::vector<float>{1.0f, 0.0f}, 1, 2, true, "input"),
+            std::make_shared<Tensor>(std::vector<float>{1.0f, 1.0f}, 1, 2, true, "input")
         };
         std::vector<std::shared_ptr<Tensor>> targets = {
             std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, false),
@@ -464,7 +469,7 @@ int main() {
         model->add(std::make_shared<Sigmoid>());
 
         auto parameters = model->get_parameters();
-        SGD optimizer(parameters, 0.001f);
+        SGD optimizer(parameters, 0.1f);
 
         // Print the model parameters.
         std::cout << "Model parameters:" << std::endl;
@@ -473,8 +478,8 @@ int main() {
         }
 
         // Training loop with multiple epochs
-        const size_t epochs = 100;
-        const size_t print_every = 10;
+        const size_t epochs = 10000;
+        const size_t print_every = 100;
 
         for (size_t epoch = 0; epoch < epochs; epoch++) {
             float total_loss = 0.0f;
@@ -510,6 +515,13 @@ int main() {
 
             // Print progress and check predictions
             if (epoch % print_every == 0 || epoch == epochs - 1) {
+
+                // In your training loop, after backward():
+                std::cout << "Checking gradient flow:\n";
+                for (auto& param : parameters) {
+                    param->debug_gradient_flow();
+                }
+
                 std::cout << "\nEpoch " << epoch << " - Total Loss: " << total_loss << std::endl;
                 std::cout << "Predictions:" << std::endl;
                 for (size_t i = 0; i < inputs.size(); i++) {
