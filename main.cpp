@@ -522,6 +522,7 @@ int main() {
                 
                 std::cout << "Input: [" << inputs[i]->data[0] << ", " << inputs[i]->data[1] 
                          << "] Expected: " << expected 
+                         << " Raw: " << output->data[0]
                          << " Predicted: " << predicted 
                          << std::endl;
             }
