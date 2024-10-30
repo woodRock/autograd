@@ -16,16 +16,15 @@ private:
     }
 
     static std::vector<float> generate_random_data(size_t rows, size_t cols) {
-        // Wider initialization range for better gradient flow
-        float limit = std::sqrt(2.0f / float(rows));  // Changed initialization scaling
-        std::uniform_real_distribution<float> dist(-limit, limit);
+        // Xavier weight initialization.
+        std::normal_distribution<float> dist(0.0f, 1.0f / std::sqrt(static_cast<float>(cols)));
         std::vector<float> data(rows * cols);
-        auto& gen = get_generator();
-        for (size_t i = 0; i < rows * cols; ++i) {
-            data[i] = dist(gen);
+        for (size_t i = 0; i < data.size(); i++) {
+            data[i] = dist(get_generator());
         }
         return data;
     }
+
 public:
     size_t rows;
     size_t cols;
@@ -114,6 +113,13 @@ public:
         if (creation_op == "relu") {
             for (size_t i = 0; i < data.size(); i++) {
                 parents[0]->grad[i] += grad[i] * (data[i] > 0 ? 1.0f : 0.0f);
+            }
+            parents[0]->backward();
+        }
+        if (creation_op == "tanh") {
+            for (size_t i = 0; i < data.size(); i++) {
+                float tanh_val = data[i];
+                parents[0]->grad[i] += grad[i] * (1.0f - tanh_val * tanh_val);
             }
             parents[0]->backward();
         }
@@ -251,6 +257,16 @@ public:
         return result;
     }
 
+    std::shared_ptr<Tensor> Tanh() {
+        std::vector<float> new_data(data.size());
+        for (size_t i = 0; i < data.size(); i++) {
+            new_data[i] = std::tanh(data[i]);
+        }
+        auto result = std::make_shared<Tensor>(new_data, rows, cols, requires_grad, "tanh");
+        result->parents.push_back(shared_from_this());
+        return result;
+    }
+
     std::shared_ptr<Tensor> sigmoid() {
         std::vector<float> new_data(data.size());
         for (size_t i = 0; i < data.size(); i++) {
@@ -346,6 +362,13 @@ public:
     }
 };
 
+class Tanh : public Layer {
+public:
+    std::shared_ptr<Tensor> forward(std::shared_ptr<Tensor> input) {
+        return input->Tanh();
+    }
+};
+
 class Sigmoid : public Layer {
 public:
     std::shared_ptr<Tensor> forward(std::shared_ptr<Tensor> input) {
@@ -389,15 +412,14 @@ public:
 
     Linear(size_t input_size, size_t output_size, bool use_bias = true)
         : use_bias(use_bias) {
-        weights = std::make_shared<Tensor>(output_size, input_size, true, "linear");  // Note: Transposed weight matrix
+        weights = std::make_shared<Tensor>(input_size, output_size, true, "linear");  // Store weights in [input_size, output_size] format
         if (use_bias) {
             bias = std::make_shared<Tensor>(1, output_size, true, "bias");
         }
     }
 
     std::shared_ptr<Tensor> forward(std::shared_ptr<Tensor> input) override {
-        auto weights_T = weights->transpose();
-        auto output = Tensor::multiply(input, weights_T);
+        auto output = Tensor::multiply(input, weights);  // Perform matrix multiplication directly
         if (use_bias) {
             // Expand bias to match batch size
             auto expanded_bias = bias->expand(1, input->rows);
@@ -445,106 +467,77 @@ public:
 };
 
 int main() {
-    try {
-        // Create the XOR dataset
-        std::vector<std::shared_ptr<Tensor>> inputs = {
-            std::make_shared<Tensor>(std::vector<float>{0.0f, 0.0f}, 1, 2, true, "input"),
-            std::make_shared<Tensor>(std::vector<float>{0.0f, 1.0f}, 1, 2, true, "input"),
-            std::make_shared<Tensor>(std::vector<float>{1.0f, 0.0f}, 1, 2, true, "input"),
-            std::make_shared<Tensor>(std::vector<float>{1.0f, 1.0f}, 1, 2, true, "input")
-        };
+    // Create a simple network on a toy dataset to check the gradient flow.
+    // auto input = std::make_shared<Tensor>(std::vector<float>{1.0f, 2.0f}, 1, 2, true, "input");
+    // auto target = std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true, "target");
 
-        std::vector<std::shared_ptr<Tensor>> targets = {
-            std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true, "target"),
-            std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true, "target"),
-            std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true, "target"),
-            std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true, "target")
-        };
+    std::vector<std::shared_ptr<Tensor>> inputs = {
+        std::make_shared<Tensor>(std::vector<float>{0.0f, 0.0f}, 1, 2, true, "input"),
+        std::make_shared<Tensor>(std::vector<float>{0.0f, 1.0f}, 1, 2, true, "input"),
+        std::make_shared<Tensor>(std::vector<float>{1.0f, 0.0f}, 1, 2, true, "input"),
+        std::make_shared<Tensor>(std::vector<float>{1.0f, 1.0f}, 1, 2, true, "input")
+    };
+
+    std::vector<std::shared_ptr<Tensor>> targets = {
+        std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true, "target"),
+        std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true, "target"),
+        std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true, "target"),
+        std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true, "target")
+    };
+
+    auto model = std::make_shared<Sequential>();
+    model->add(std::make_shared<Linear>(2, 4, true));
+    model->add(std::make_shared<Tanh>());
+    model->add(std::make_shared<Linear>(4, 1, true));
+
+    auto parameters = model->get_parameters();
+    SGD optimizer(parameters, 0.1f);  // Reduced learning rate since we'll handle batch properly
+
+    const size_t epochs = 1000;
+    const size_t print_every = 100;
+
+    for (size_t epoch = 0; epoch < epochs; epoch++) {
+        std::shared_ptr<Tensor> loss = std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true, "target");
+        for (size_t i = 0; i < inputs.size(); i++) {
+            auto input = inputs[i];
+            auto target = targets[i];
+            auto output = model->forward(input);
+            loss = Tensor::add(loss, Tensor::binary_cross_entropy(output, target));
+        }
         
-        auto model = std::make_shared<Sequential>();
-        model->add(std::make_shared<Linear>(2, 4, true));
-        model->add(std::make_shared<ReLU>());
-        model->add(std::make_shared<Linear>(4, 1, true));
-        model->add(std::make_shared<Sigmoid>());
+        // Zero gradients at start of batch
+        optimizer.zero_grad();
+        
+        loss->grad = std::vector<float>(loss->data.size(), 1.0f / inputs.size());  // Set loss gradient to 1/N
+        // Backward pass
+        loss->backward();
+        
+        // Single weight update
+        optimizer.step();
 
-        auto parameters = model->get_parameters();
-        SGD optimizer(parameters, 0.1f);  // Reduced learning rate since we'll handle batch properly
+        // Print progress
+        if (epoch % print_every == 0) {
+            std::cout << "\nEpoch " << epoch << " - Loss: " << loss->data[0] << std::endl;
+            
+            // Print gradients for diagnosis
+            std::cout << "Gradients:" << std::endl;
+            for (auto& param : parameters) {
+                param->debug_gradient_flow();
+            }
 
-        const size_t epochs = 10000;
-        const size_t print_every = 100;
-        const float batch_size = static_cast<float>(inputs.size());  // For proper gradient scaling
-
-        for (size_t epoch = 0; epoch < epochs; epoch++) {
-            float total_loss = 0.0f;
-            
-            // Zero gradients at start of batch
-            optimizer.zero_grad();
-            
-            // Accumulate gradients across all instances
-            std::shared_ptr<Tensor> batch_loss = nullptr;
-            
-            // Forward pass and loss accumulation for all samples
+            // Check predictions
+            bool all_correct = true;
             for (size_t i = 0; i < inputs.size(); i++) {
                 auto output = model->forward(inputs[i]);
-                auto instance_loss = Tensor::binary_cross_entropy(output, targets[i]);
-                total_loss += instance_loss->data[0];
+                int predicted = (output->data[0] > 0.5f ? 1 : 0);
+                int expected = (targets[i]->data[0] > 0.5f ? 1 : 0);
+                all_correct &= (predicted == expected);
                 
-                // Accumulate losses
-                if (batch_loss == nullptr) {
-                    batch_loss = instance_loss;
-                } else {
-                    batch_loss = Tensor::add(batch_loss, instance_loss);
-                }
-            }
-            
-            // Scale the gradients by batch size and do single backward pass
-            if (batch_loss) {
-                batch_loss->grad = std::vector<float>(batch_loss->data.size(), 1.0f / batch_size);
-                batch_loss->backward();
-            }
-
-            // Single weight update for the batch
-            optimizer.step();
-
-            // Print progress
-            if (epoch % print_every == 0) {
-                std::cout << "\nEpoch " << epoch << " - Average Loss: " << total_loss / batch_size << std::endl;
-                
-                // Print gradients for diagnosis
-                std::cout << "Gradient magnitudes:" << std::endl;
-                for (size_t i = 0; i < parameters.size(); i++) {
-                    float grad_norm = 0.0f;
-                    for (const auto& g : parameters[i]->grad) {
-                        grad_norm += g * g;
-                    }
-                    grad_norm = std::sqrt(grad_norm);
-                    std::cout << "Layer " << i << " gradient norm: " << grad_norm << std::endl;
-                }
-
-                // Check predictions
-                bool all_correct = true;
-                for (size_t i = 0; i < inputs.size(); i++) {
-                    auto output = model->forward(inputs[i]);
-                    int predicted = (output->data[0] > 0.5f ? 1 : 0);
-                    int expected = (targets[i]->data[0] > 0.5f ? 1 : 0);
-                    all_correct &= (predicted == expected);
-                    
-                    std::cout << "Input: [" << inputs[i]->data[0] << ", " << inputs[i]->data[1] 
-                             << "] Expected: " << expected 
-                             << " Predicted: " << output->data[0] 
-                             << std::endl;
-                }
-                
-                if (all_correct && (total_loss / batch_size) < 0.1) {
-                    std::cout << "XOR learned successfully!" << std::endl;
-                    break;
-                }
+                std::cout << "Input: [" << inputs[i]->data[0] << ", " << inputs[i]->data[1] 
+                         << "] Expected: " << expected 
+                         << " Predicted: " << predicted 
+                         << std::endl;
             }
         }
-
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
     }
-    return 0;
 }
