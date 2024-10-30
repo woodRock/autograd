@@ -14,10 +14,10 @@ private:
         static std::mt19937 gen(rd());
         return gen;
     }
-    
+
     static std::vector<float> generate_random_data(size_t rows, size_t cols) {
-        // Xavier/Glorot initialization
-        float limit = std::sqrt(6.0f / (rows + cols));
+        // Wider initialization range for better gradient flow
+        float limit = std::sqrt(2.0f / float(rows));  // Changed initialization scaling
         std::uniform_real_distribution<float> dist(-limit, limit);
         std::vector<float> data(rows * cols);
         auto& gen = get_generator();
@@ -26,7 +26,6 @@ private:
         }
         return data;
     }
-
 public:
     size_t rows;
     size_t cols;
@@ -252,7 +251,6 @@ public:
         return result;
     }
 
-
     std::shared_ptr<Tensor> sigmoid() {
         std::vector<float> new_data(data.size());
         for (size_t i = 0; i < data.size(); i++) {
@@ -265,9 +263,10 @@ public:
 
     static std::shared_ptr<Tensor> binary_cross_entropy(std::shared_ptr<Tensor> pred, std::shared_ptr<Tensor> target) {
         std::vector<float> new_data(pred->data.size());
+        float scale_factor = 100.0f;  // Scale factor to prevent tiny gradients
         for (size_t i = 0; i < pred->data.size(); i++) {
-            float p = std::max(std::min(pred->data[i], 1.0f - 1e-15f), 1e-15f);
-            new_data[i] = -target->data[i] * std::log(p) - (1 - target->data[i]) * std::log(1 - p);
+            float p = std::max(std::min(pred->data[i], 1.0f - 1e-7f), 1e-7f);  // Changed epsilon
+            new_data[i] = (-target->data[i] * std::log(p) - (1 - target->data[i]) * std::log(1 - p)) * scale_factor;
         }
         auto result = std::make_shared<Tensor>(new_data, pred->rows, pred->cols, pred->requires_grad, "bce");
         result->parents.push_back(pred);
@@ -454,83 +453,91 @@ int main() {
             std::make_shared<Tensor>(std::vector<float>{1.0f, 0.0f}, 1, 2, true, "input"),
             std::make_shared<Tensor>(std::vector<float>{1.0f, 1.0f}, 1, 2, true, "input")
         };
-        std::vector<std::shared_ptr<Tensor>> targets = {
-            std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, false),
-            std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, false),
-            std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, false),
-            std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, false)
-        };
 
-        // Create a network for XOR
+        std::vector<std::shared_ptr<Tensor>> targets = {
+            std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true, "target"),
+            std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true, "target"),
+            std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true, "target"),
+            std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true, "target")
+        };
+        
         auto model = std::make_shared<Sequential>();
-        model->add(std::make_shared<Linear>(2, 4, true));  // Input -> 4 hidden neurons
+        model->add(std::make_shared<Linear>(2, 4, true));
         model->add(std::make_shared<ReLU>());
-        model->add(std::make_shared<Linear>(4, 1, true));  // 4 hidden -> 1 output
+        model->add(std::make_shared<Linear>(4, 1, true));
         model->add(std::make_shared<Sigmoid>());
 
         auto parameters = model->get_parameters();
-        SGD optimizer(parameters, 0.1f);
+        SGD optimizer(parameters, 0.1f);  // Reduced learning rate since we'll handle batch properly
 
-        // Print the model parameters.
-        std::cout << "Model parameters:" << std::endl;
-        for (auto& param : parameters) {
-            std::cout << *param << std::endl;
-        }
-
-        // Training loop with multiple epochs
         const size_t epochs = 10000;
         const size_t print_every = 100;
+        const float batch_size = static_cast<float>(inputs.size());  // For proper gradient scaling
 
         for (size_t epoch = 0; epoch < epochs; epoch++) {
             float total_loss = 0.0f;
-
+            
+            // Zero gradients at start of batch
             optimizer.zero_grad();
-
-            // Shuffle the dataset.
-            std::vector<size_t> indices(inputs.size());
-            std::iota(indices.begin(), indices.end(), 0);
-            std::random_shuffle(indices.begin(), indices.end());
-            std::vector<std::shared_ptr<Tensor>> shuffled_inputs(inputs.size());
-            std::vector<std::shared_ptr<Tensor>> shuffled_targets(targets.size());
+            
+            // Accumulate gradients across all instances
+            std::shared_ptr<Tensor> batch_loss = nullptr;
+            
+            // Forward pass and loss accumulation for all samples
             for (size_t i = 0; i < inputs.size(); i++) {
-                shuffled_inputs[i] = inputs[indices[i]];
-                shuffled_targets[i] = targets[indices[i]];
+                auto output = model->forward(inputs[i]);
+                auto instance_loss = Tensor::binary_cross_entropy(output, targets[i]);
+                total_loss += instance_loss->data[0];
+                
+                // Accumulate losses
+                if (batch_loss == nullptr) {
+                    batch_loss = instance_loss;
+                } else {
+                    batch_loss = Tensor::add(batch_loss, instance_loss);
+                }
+            }
+            
+            // Scale the gradients by batch size and do single backward pass
+            if (batch_loss) {
+                batch_loss->grad = std::vector<float>(batch_loss->data.size(), 1.0f / batch_size);
+                batch_loss->backward();
             }
 
-            // Train on all XOR patterns
-            for (size_t i = 0; i < inputs.size(); i++) {
-                auto output = model->forward(shuffled_inputs[i]);
-                auto loss = Tensor::binary_cross_entropy(output, shuffled_targets[i]);
-                total_loss += loss->data[0];
-
-                // Set the gradient for the loss.
-                loss->grad = std::vector<float>(loss->data.size(), 1.0f);
-
-                // Backpropagate the error.
-                loss->backward();
-            }
-
-            // Update weights
+            // Single weight update for the batch
             optimizer.step();
 
-            // Print progress and check predictions
-            if (epoch % print_every == 0 || epoch == epochs - 1) {
-
-                // In your training loop, after backward():
-                std::cout << "Checking gradient flow:\n";
-                for (auto& param : parameters) {
-                    param->debug_gradient_flow();
+            // Print progress
+            if (epoch % print_every == 0) {
+                std::cout << "\nEpoch " << epoch << " - Average Loss: " << total_loss / batch_size << std::endl;
+                
+                // Print gradients for diagnosis
+                std::cout << "Gradient magnitudes:" << std::endl;
+                for (size_t i = 0; i < parameters.size(); i++) {
+                    float grad_norm = 0.0f;
+                    for (const auto& g : parameters[i]->grad) {
+                        grad_norm += g * g;
+                    }
+                    grad_norm = std::sqrt(grad_norm);
+                    std::cout << "Layer " << i << " gradient norm: " << grad_norm << std::endl;
                 }
 
-                std::cout << "\nEpoch " << epoch << " - Total Loss: " << total_loss << std::endl;
-                std::cout << "Predictions:" << std::endl;
+                // Check predictions
+                bool all_correct = true;
                 for (size_t i = 0; i < inputs.size(); i++) {
                     auto output = model->forward(inputs[i]);
-                    std::cout << "Input: " << *inputs[i] 
-                            << " Expected: " << *targets[i] 
-                            << " Predicted: " << *output 
-                            << " (Rounded: " << (output->data[0] > 0.5f ? 1 : 0) << ")" 
-                            << std::endl;
+                    int predicted = (output->data[0] > 0.5f ? 1 : 0);
+                    int expected = (targets[i]->data[0] > 0.5f ? 1 : 0);
+                    all_correct &= (predicted == expected);
+                    
+                    std::cout << "Input: [" << inputs[i]->data[0] << ", " << inputs[i]->data[1] 
+                             << "] Expected: " << expected 
+                             << " Predicted: " << output->data[0] 
+                             << std::endl;
+                }
+                
+                if (all_correct && (total_loss / batch_size) < 0.1) {
+                    std::cout << "XOR learned successfully!" << std::endl;
+                    break;
                 }
             }
         }
