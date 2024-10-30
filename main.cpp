@@ -46,13 +46,11 @@ public:
         grad = std::vector<float>(rows * cols, 0);
     }
 
-    // Add destructor to break cycles
     ~Tensor() {
         parents.clear();
         children.clear();
     }
     
-    // Add method to explicitly break references
     void clear_graph() {
         parents.clear();
         children.clear();
@@ -81,7 +79,6 @@ public:
             auto weights = parents[0];
             auto inputs = parents[1];
             
-            // Combine loops for better cache utilization
             for (size_t i = 0; i < weights->rows; i++) {
                 for (size_t j = 0; j < weights->cols; j++) {
                     float weight_grad = 0.0f;
@@ -380,10 +377,9 @@ class SGD {
 public:
     std::vector<std::shared_ptr<Tensor>> parameters;
     float learning_rate;
-    float max_grad_norm;  // Added gradient clipping
 
-    SGD(std::vector<std::shared_ptr<Tensor>> parameters, float learning_rate, float max_grad_norm = 1.0f)
-        : parameters(parameters), learning_rate(learning_rate), max_grad_norm(max_grad_norm) {}
+    SGD(std::vector<std::shared_ptr<Tensor>> parameters, float learning_rate)
+        : parameters(parameters), learning_rate(learning_rate) {}
 
     void zero_grad() {
         for (auto& param : parameters) {
@@ -412,7 +408,7 @@ public:
 
     Linear(size_t input_size, size_t output_size, bool use_bias = true)
         : use_bias(use_bias) {
-        weights = std::make_shared<Tensor>(input_size, output_size, true, "linear");  // Store weights in [input_size, output_size] format
+        weights = std::make_shared<Tensor>(input_size, output_size, true, "linear"); 
         if (use_bias) {
             bias = std::make_shared<Tensor>(1, output_size, true, "bias");
         }
@@ -467,22 +463,17 @@ public:
 };
 
 int main() {
-    // Create a simple network on a toy dataset to check the gradient flow.
-    // auto input = std::make_shared<Tensor>(std::vector<float>{1.0f, 2.0f}, 1, 2, true, "input");
-    // auto target = std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true, "target");
-
     std::vector<std::shared_ptr<Tensor>> inputs = {
-        std::make_shared<Tensor>(std::vector<float>{0.0f, 0.0f}, 1, 2, true, "input"),
-        std::make_shared<Tensor>(std::vector<float>{0.0f, 1.0f}, 1, 2, true, "input"),
-        std::make_shared<Tensor>(std::vector<float>{1.0f, 0.0f}, 1, 2, true, "input"),
-        std::make_shared<Tensor>(std::vector<float>{1.0f, 1.0f}, 1, 2, true, "input")
+        std::make_shared<Tensor>(std::vector<float>{0.0f, 0.0f}, 1, 2, true),
+        std::make_shared<Tensor>(std::vector<float>{0.0f, 1.0f}, 1, 2, true),
+        std::make_shared<Tensor>(std::vector<float>{1.0f, 0.0f}, 1, 2, true),
+        std::make_shared<Tensor>(std::vector<float>{1.0f, 1.0f}, 1, 2, true)
     };
-
     std::vector<std::shared_ptr<Tensor>> targets = {
-        std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true, "target"),
-        std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true, "target"),
-        std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true, "target"),
-        std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true, "target")
+        std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true),
+        std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true),
+        std::make_shared<Tensor>(std::vector<float>{1.0f}, 1, 1, true),
+        std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true)
     };
 
     auto model = std::make_shared<Sequential>();
@@ -491,13 +482,13 @@ int main() {
     model->add(std::make_shared<Linear>(4, 1, true));
 
     auto parameters = model->get_parameters();
-    SGD optimizer(parameters, 0.1f);  // Reduced learning rate since we'll handle batch properly
+    SGD optimizer(parameters, 0.1f); 
 
     const size_t epochs = 1000;
     const size_t print_every = 100;
 
     for (size_t epoch = 0; epoch < epochs; epoch++) {
-        std::shared_ptr<Tensor> loss = std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true, "target");
+        std::shared_ptr<Tensor> loss = std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true);
         for (size_t i = 0; i < inputs.size(); i++) {
             auto input = inputs[i];
             auto target = targets[i];
@@ -505,14 +496,10 @@ int main() {
             loss = Tensor::add(loss, Tensor::binary_cross_entropy(output, target));
         }
         
-        // Zero gradients at start of batch
         optimizer.zero_grad();
         
-        loss->grad = std::vector<float>(loss->data.size(), 1.0f / inputs.size());  // Set loss gradient to 1/N
-        // Backward pass
+        loss->grad = std::vector<float>(loss->data.size(), 1.0f / inputs.size());  
         loss->backward();
-        
-        // Single weight update
         optimizer.step();
 
         // Print progress
