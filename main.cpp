@@ -8,6 +8,7 @@
 #include <numeric>
 #include <algorithm>
 #include <cassert>
+#include <random>
 
 class Tensor : public std::enable_shared_from_this<Tensor> {
 private:
@@ -1106,8 +1107,9 @@ class Dropout : public Layer {
 public:
     float dropout_rate;
     bool training;
+    std::vector<bool> mask;
 
-    Dropout(float dropout_rate) : dropout_rate(dropout_rate) {}
+    Dropout(float dropout_rate) : dropout_rate(dropout_rate), training(true) {}
 
     std::shared_ptr<Tensor> forward(std::shared_ptr<Tensor> input) override {
         if (!training) {
@@ -1115,12 +1117,19 @@ public:
         }
 
         std::vector<float> output_data(input->data.size());
+        mask.resize(input->data.size());
+
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::bernoulli_distribution d(1.0f - dropout_rate);
+
         for (size_t i = 0; i < input->data.size(); i++) {
-            output_data[i] = input->data[i] * (1.0f - dropout_rate);
+            mask[i] = d(gen);
+            output_data[i] = mask[i] ? input->data[i] / (1.0f - dropout_rate) : 0.0f;
         }
 
         auto output = std::make_shared<Tensor>(output_data, input->rows, input->cols, 
-                                             input->requires_grad, "dropout");
+                                               input->requires_grad, "dropout");
         output->parents = {input};
         return output;
     }
