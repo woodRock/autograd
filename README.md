@@ -9,7 +9,13 @@ https://en.wikipedia.org/wiki/Automatic_differentiation
 First compile the code.
 
 ```bash
-$ g++ -o out main.cpp
+$ g++ main.cpp -o output
+```
+
+(Optional) compile with multi-threading support.
+
+```bash
+$ g++ -fopenmp -O3 main.cpp -o output
 ```
 
 Then run
