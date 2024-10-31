@@ -1,4 +1,3 @@
-/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/tensor_lib.dir
-/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/tensor_test.dir
+/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/output.dir
 /vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/edit_cache.dir
 /vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/rebuild_cache.dir

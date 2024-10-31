@@ -1,0 +1,1 @@
+/usr/bin/g++-13  -fopenmp -O3 CMakeFiles/output.dir/src/tensor.cpp.o CMakeFiles/output.dir/src/tensor_cuda.cu.o CMakeFiles/output.dir/cmake_device_link.o -o output   -L/opt/cuda/targets/x86_64-linux/lib/stubs  -L/opt/cuda/targets/x86_64-linux/lib  /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/libgomp.so /usr/lib/libpthread.a -lcudadevrt -lcudart_static -lrt -lpthread -ldl

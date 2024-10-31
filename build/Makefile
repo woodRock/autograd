@@ -117,37 +117,24 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named tensor_lib
+# Target rules for targets named output
 
 # Build rule for target.
-tensor_lib: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tensor_lib
-.PHONY : tensor_lib
+output: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 output
+.PHONY : output
 
 # fast build rule for target.
-tensor_lib/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensor_lib.dir/build.make CMakeFiles/tensor_lib.dir/build
-.PHONY : tensor_lib/fast
-
-#=============================================================================
-# Target rules for targets named tensor_test
-
-# Build rule for target.
-tensor_test: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tensor_test
-.PHONY : tensor_test
-
-# fast build rule for target.
-tensor_test/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensor_test.dir/build.make CMakeFiles/tensor_test.dir/build
-.PHONY : tensor_test/fast
+output/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/output.dir/build.make CMakeFiles/output.dir/build
+.PHONY : output/fast
 
 src/tensor.o: src/tensor.cpp.o
 .PHONY : src/tensor.o
 
 # target to build an object file
 src/tensor.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensor_test.dir/build.make CMakeFiles/tensor_test.dir/src/tensor.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/output.dir/build.make CMakeFiles/output.dir/src/tensor.cpp.o
 .PHONY : src/tensor.cpp.o
 
 src/tensor.i: src/tensor.cpp.i
@@ -155,7 +142,7 @@ src/tensor.i: src/tensor.cpp.i
 
 # target to preprocess a source file
 src/tensor.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensor_test.dir/build.make CMakeFiles/tensor_test.dir/src/tensor.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/output.dir/build.make CMakeFiles/output.dir/src/tensor.cpp.i
 .PHONY : src/tensor.cpp.i
 
 src/tensor.s: src/tensor.cpp.s
@@ -163,7 +150,7 @@ src/tensor.s: src/tensor.cpp.s
 
 # target to generate assembly for a file
 src/tensor.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensor_test.dir/build.make CMakeFiles/tensor_test.dir/src/tensor.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/output.dir/build.make CMakeFiles/output.dir/src/tensor.cpp.s
 .PHONY : src/tensor.cpp.s
 
 src/tensor_cuda.o: src/tensor_cuda.cu.o
@@ -171,7 +158,7 @@ src/tensor_cuda.o: src/tensor_cuda.cu.o
 
 # target to build an object file
 src/tensor_cuda.cu.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensor_lib.dir/build.make CMakeFiles/tensor_lib.dir/src/tensor_cuda.cu.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/output.dir/build.make CMakeFiles/output.dir/src/tensor_cuda.cu.o
 .PHONY : src/tensor_cuda.cu.o
 
 src/tensor_cuda.i: src/tensor_cuda.cu.i
@@ -179,7 +166,7 @@ src/tensor_cuda.i: src/tensor_cuda.cu.i
 
 # target to preprocess a source file
 src/tensor_cuda.cu.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensor_lib.dir/build.make CMakeFiles/tensor_lib.dir/src/tensor_cuda.cu.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/output.dir/build.make CMakeFiles/output.dir/src/tensor_cuda.cu.i
 .PHONY : src/tensor_cuda.cu.i
 
 src/tensor_cuda.s: src/tensor_cuda.cu.s
@@ -187,7 +174,7 @@ src/tensor_cuda.s: src/tensor_cuda.cu.s
 
 # target to generate assembly for a file
 src/tensor_cuda.cu.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/tensor_lib.dir/build.make CMakeFiles/tensor_lib.dir/src/tensor_cuda.cu.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/output.dir/build.make CMakeFiles/output.dir/src/tensor_cuda.cu.s
 .PHONY : src/tensor_cuda.cu.s
 
 # Help Target
@@ -198,8 +185,7 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
-	@echo "... tensor_lib"
-	@echo "... tensor_test"
+	@echo "... output"
 	@echo "... src/tensor.o"
 	@echo "... src/tensor.i"
 	@echo "... src/tensor.s"

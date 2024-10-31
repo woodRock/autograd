@@ -935,3 +935,269 @@ events:
       Running the CXX compiler's linker: "/bin/ld" "-v"
       GNU ld (GNU Binutils) 2.42.0
 ...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/pkg/share/cmake-3.29/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/pkg/share/cmake-3.29/Modules/CheckCXXSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "/usr/pkg/share/cmake-3.29/Modules/FindThreads.cmake:99 (CHECK_CXX_SOURCE_COMPILES)"
+      - "/usr/pkg/share/cmake-3.29/Modules/FindThreads.cmake:163 (_threads_check_libc)"
+      - "/usr/pkg/share/cmake-3.29/Modules/FindCUDA.cmake:1071 (find_package)"
+      - "CMakeLists.txt:9 (find_package)"
+    checks:
+      - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+    directories:
+      source: "/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-lgo0mT"
+      binary: "/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-lgo0mT"
+    cmakeVariables:
+      CMAKE_CUDA_ARCHITECTURES: "52"
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_HAVE_LIBC_PTHREAD"
+      cached: true
+      stdout: |
+        Change Dir: '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-lgo0mT'
+        
+        Run Build Command(s): /usr/pkg/bin/cmake -E env VERBOSE=1 /usr/local/bin/gmake -f Makefile cmTC_a558d/fast
+        gmake[1]: Entering directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-lgo0mT'
+        /usr/local/bin/gmake  -f CMakeFiles/cmTC_a558d.dir/build.make CMakeFiles/cmTC_a558d.dir/build
+        gmake[2]: Entering directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-lgo0mT'
+        Building CXX object CMakeFiles/cmTC_a558d.dir/src.cxx.o
+        /usr/bin/g++-13 -DCMAKE_HAVE_LIBC_PTHREAD  -std=gnu++17 -o CMakeFiles/cmTC_a558d.dir/src.cxx.o -c /vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-lgo0mT/src.cxx
+        Linking CXX executable cmTC_a558d
+        /usr/pkg/bin/cmake -E cmake_link_script CMakeFiles/cmTC_a558d.dir/link.txt --verbose=1
+        /usr/bin/g++-13 CMakeFiles/cmTC_a558d.dir/src.cxx.o -o cmTC_a558d
+        gmake[2]: Leaving directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-lgo0mT'
+        gmake[1]: Leaving directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-lgo0mT'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/pkg/share/cmake-3.29/Modules/FindOpenMP.cmake:219 (try_compile)"
+      - "/usr/pkg/share/cmake-3.29/Modules/FindOpenMP.cmake:487 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:10 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY"
+      binary: "/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY"
+    cmakeVariables:
+      CMAKE_CUDA_ARCHITECTURES: "52"
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_fopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY'
+        
+        Run Build Command(s): /usr/pkg/bin/cmake -E env VERBOSE=1 /usr/local/bin/gmake -f Makefile cmTC_ca194/fast
+        gmake[1]: Entering directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY'
+        /usr/local/bin/gmake  -f CMakeFiles/cmTC_ca194.dir/build.make CMakeFiles/cmTC_ca194.dir/build
+        gmake[2]: Entering directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY'
+        Building CXX object CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o
+        /usr/bin/g++-13   -fopenmp -v -std=gnu++17 -o CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o -c /vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY/OpenMPTryFlag.cpp
+        Using built-in specs.
+        COLLECT_GCC=/usr/bin/g++-13
+        Target: x86_64-pc-linux-gnu
+        Configured with: /build/gcc13/src/gcc/configure --enable-languages=c,c++,fortran --enable-bootstrap --prefix=/usr --libdir=/usr/lib --libexecdir=/usr/lib --mandir=/usr/share/man --infodir=/usr/share/info --with-bugurl=https://gitlab.archlinux.org/archlinux/packaging/packages/gcc13/-/issues --with-build-config=bootstrap-lto --with-linker-hash-style=gnu --with-system-zlib --enable-__cxa_atexit --enable-cet=auto --enable-checking=release --enable-clocale=gnu --enable-default-pie --enable-default-ssp --enable-gnu-indirect-function --enable-gnu-unique-object --enable-libstdcxx-backtrace --enable-link-serialization=1 --enable-linker-build-id --enable-lto --disable-multilib --enable-plugin --enable-shared --enable-threads=posix --disable-libssp --disable-libstdcxx-pch --disable-werror --program-suffix=-13 --enable-version-specific-runtime-libs
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 13.3.0 (GCC) 
+        COLLECT_GCC_OPTIONS='-fopenmp' '-v' '-std=gnu++17' '-o' 'CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-pthread' '-dumpdir' 'CMakeFiles/cmTC_ca194.dir/'
+         /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/cc1plus -quiet -v -D_GNU_SOURCE -D_REENTRANT /vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY/OpenMPTryFlag.cpp -quiet -dumpdir CMakeFiles/cmTC_ca194.dir/ -dumpbase OpenMPTryFlag.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -std=gnu++17 -version -fopenmp -o /tmp/ccDuvcQq.s
+        GNU C++17 (GCC) version 13.3.0 (x86_64-pc-linux-gnu)
+        	compiled by GNU C version 13.3.0, GMP version 6.3.0, MPFR version 4.2.1, MPC version 1.3.1, isl version isl-0.26-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring nonexistent directory "/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../x86_64-pc-linux-gnu/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++
+         /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/x86_64-pc-linux-gnu
+         /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/backward
+         /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include
+         /usr/local/include
+         /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include-fixed
+         /usr/include
+        End of search list.
+        Compiler executable checksum: 3f99ece11149d4274e63aee99065b2b4
+        COLLECT_GCC_OPTIONS='-fopenmp' '-v' '-std=gnu++17' '-o' 'CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-pthread' '-dumpdir' 'CMakeFiles/cmTC_ca194.dir/'
+         as -v --64 -o CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o /tmp/ccDuvcQq.s
+        GNU assembler version 2.42.0 (x86_64-pc-linux-gnu) using BFD version (GNU Binutils) 2.42.0
+        COMPILER_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/
+        LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib/:/lib/../lib/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../:/lib/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-fopenmp' '-v' '-std=gnu++17' '-o' 'CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-pthread' '-dumpdir' 'CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.'
+        Linking CXX executable cmTC_ca194
+        /usr/pkg/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ca194.dir/link.txt --verbose=1
+        /usr/bin/g++-13  -fopenmp -v CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o -o cmTC_ca194  -v
+        Using built-in specs.
+        COLLECT_GCC=/usr/bin/g++-13
+        COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/lto-wrapper
+        Target: x86_64-pc-linux-gnu
+        Configured with: /build/gcc13/src/gcc/configure --enable-languages=c,c++,fortran --enable-bootstrap --prefix=/usr --libdir=/usr/lib --libexecdir=/usr/lib --mandir=/usr/share/man --infodir=/usr/share/info --with-bugurl=https://gitlab.archlinux.org/archlinux/packaging/packages/gcc13/-/issues --with-build-config=bootstrap-lto --with-linker-hash-style=gnu --with-system-zlib --enable-__cxa_atexit --enable-cet=auto --enable-checking=release --enable-clocale=gnu --enable-default-pie --enable-default-ssp --enable-gnu-indirect-function --enable-gnu-unique-object --enable-libstdcxx-backtrace --enable-link-serialization=1 --enable-linker-build-id --enable-lto --disable-multilib --enable-plugin --enable-shared --enable-threads=posix --disable-libssp --disable-libstdcxx-pch --disable-werror --program-suffix=-13 --enable-version-specific-runtime-libs
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 13.3.0 (GCC) 
+        COMPILER_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/
+        LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib/:/lib/../lib/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../:/lib/:/usr/lib/
+        Reading specs from /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/libgomp.spec
+        COLLECT_GCC_OPTIONS='-fopenmp' '-v' '-o' 'cmTC_ca194' '-v' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-pthread' '-dumpdir' 'cmTC_ca194.'
+         /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/collect2 -plugin /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/lto-wrapper -plugin-opt=-fresolution=/tmp/ccGjhFW1.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lpthread -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --build-id --eh-frame-hdr --hash-style=gnu -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -o cmTC_ca194 /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib/Scrt1.o /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib/crti.o /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/crtbeginS.o -L/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0 -L/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib -L/lib/../lib -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../.. CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o -lstdc++ -lm -lgomp -lgcc_s -lgcc -lpthread -lc -lgcc_s -lgcc /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/crtendS.o /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib/crtn.o
+        COLLECT_GCC_OPTIONS='-fopenmp' '-v' '-o' 'cmTC_ca194' '-v' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-pthread' '-dumpdir' 'cmTC_ca194.'
+        gmake[2]: Leaving directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY'
+        gmake[1]: Leaving directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/pkg/share/cmake-3.29/Modules/FindOpenMP.cmake:263 (message)"
+      - "/usr/pkg/share/cmake-3.29/Modules/FindOpenMP.cmake:487 (_OPENMP_GET_FLAGS)"
+      - "CMakeLists.txt:10 (find_package)"
+    message: |
+      Parsed CXX OpenMP implicit link information from above output:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(\\.[a-z]+)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        ignore line: [Change Dir: '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY']
+        ignore line: []
+        ignore line: [Run Build Command(s): /usr/pkg/bin/cmake -E env VERBOSE=1 /usr/local/bin/gmake -f Makefile cmTC_ca194/fast]
+        ignore line: [gmake[1]: Entering directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY']
+        ignore line: [/usr/local/bin/gmake  -f CMakeFiles/cmTC_ca194.dir/build.make CMakeFiles/cmTC_ca194.dir/build]
+        ignore line: [gmake[2]: Entering directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY']
+        ignore line: [Building CXX object CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o]
+        ignore line: [/usr/bin/g++-13   -fopenmp -v -std=gnu++17 -o CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o -c /vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY/OpenMPTryFlag.cpp]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/usr/bin/g++-13]
+        ignore line: [Target: x86_64-pc-linux-gnu]
+        ignore line: [Configured with: /build/gcc13/src/gcc/configure --enable-languages=c c++ fortran --enable-bootstrap --prefix=/usr --libdir=/usr/lib --libexecdir=/usr/lib --mandir=/usr/share/man --infodir=/usr/share/info --with-bugurl=https://gitlab.archlinux.org/archlinux/packaging/packages/gcc13/-/issues --with-build-config=bootstrap-lto --with-linker-hash-style=gnu --with-system-zlib --enable-__cxa_atexit --enable-cet=auto --enable-checking=release --enable-clocale=gnu --enable-default-pie --enable-default-ssp --enable-gnu-indirect-function --enable-gnu-unique-object --enable-libstdcxx-backtrace --enable-link-serialization=1 --enable-linker-build-id --enable-lto --disable-multilib --enable-plugin --enable-shared --enable-threads=posix --disable-libssp --disable-libstdcxx-pch --disable-werror --program-suffix=-13 --enable-version-specific-runtime-libs]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 13.3.0 (GCC) ]
+        ignore line: [COLLECT_GCC_OPTIONS='-fopenmp' '-v' '-std=gnu++17' '-o' 'CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-pthread' '-dumpdir' 'CMakeFiles/cmTC_ca194.dir/']
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/cc1plus -quiet -v -D_GNU_SOURCE -D_REENTRANT /vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-dKtmQY/OpenMPTryFlag.cpp -quiet -dumpdir CMakeFiles/cmTC_ca194.dir/ -dumpbase OpenMPTryFlag.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -std=gnu++17 -version -fopenmp -o /tmp/ccDuvcQq.s]
+        ignore line: [GNU C++17 (GCC) version 13.3.0 (x86_64-pc-linux-gnu)]
+        ignore line: [	compiled by GNU C version 13.3.0  GMP version 6.3.0  MPFR version 4.2.1  MPC version 1.3.1  isl version isl-0.26-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [ignoring nonexistent directory "/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../x86_64-pc-linux-gnu/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++]
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/x86_64-pc-linux-gnu]
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/backward]
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include]
+        ignore line: [ /usr/local/include]
+        ignore line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include-fixed]
+        ignore line: [ /usr/include]
+        ignore line: [End of search list.]
+        ignore line: [Compiler executable checksum: 3f99ece11149d4274e63aee99065b2b4]
+        ignore line: [COLLECT_GCC_OPTIONS='-fopenmp' '-v' '-std=gnu++17' '-o' 'CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-pthread' '-dumpdir' 'CMakeFiles/cmTC_ca194.dir/']
+        ignore line: [ as -v --64 -o CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o /tmp/ccDuvcQq.s]
+        ignore line: [GNU assembler version 2.42.0 (x86_64-pc-linux-gnu) using BFD version (GNU Binutils) 2.42.0]
+        ignore line: [COMPILER_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/]
+        ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib/:/lib/../lib/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../:/lib/:/usr/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-fopenmp' '-v' '-std=gnu++17' '-o' 'CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-pthread' '-dumpdir' 'CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.']
+        ignore line: [Linking CXX executable cmTC_ca194]
+        ignore line: [/usr/pkg/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ca194.dir/link.txt --verbose=1]
+        ignore line: [/usr/bin/g++-13  -fopenmp -v CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o -o cmTC_ca194  -v]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/usr/bin/g++-13]
+        ignore line: [COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/lto-wrapper]
+        ignore line: [Target: x86_64-pc-linux-gnu]
+        ignore line: [Configured with: /build/gcc13/src/gcc/configure --enable-languages=c c++ fortran --enable-bootstrap --prefix=/usr --libdir=/usr/lib --libexecdir=/usr/lib --mandir=/usr/share/man --infodir=/usr/share/info --with-bugurl=https://gitlab.archlinux.org/archlinux/packaging/packages/gcc13/-/issues --with-build-config=bootstrap-lto --with-linker-hash-style=gnu --with-system-zlib --enable-__cxa_atexit --enable-cet=auto --enable-checking=release --enable-clocale=gnu --enable-default-pie --enable-default-ssp --enable-gnu-indirect-function --enable-gnu-unique-object --enable-libstdcxx-backtrace --enable-link-serialization=1 --enable-linker-build-id --enable-lto --disable-multilib --enable-plugin --enable-shared --enable-threads=posix --disable-libssp --disable-libstdcxx-pch --disable-werror --program-suffix=-13 --enable-version-specific-runtime-libs]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 13.3.0 (GCC) ]
+        ignore line: [COMPILER_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/]
+        ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib/:/lib/../lib/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../:/lib/:/usr/lib/]
+        ignore line: [Reading specs from /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/libgomp.spec]
+        ignore line: [COLLECT_GCC_OPTIONS='-fopenmp' '-v' '-o' 'cmTC_ca194' '-v' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-pthread' '-dumpdir' 'cmTC_ca194.']
+        link line: [ /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/collect2 -plugin /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/lto-wrapper -plugin-opt=-fresolution=/tmp/ccGjhFW1.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lpthread -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --build-id --eh-frame-hdr --hash-style=gnu -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -o cmTC_ca194 /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib/Scrt1.o /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib/crti.o /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/crtbeginS.o -L/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0 -L/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib -L/lib/../lib -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../.. CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o -lstdc++ -lm -lgomp -lgcc_s -lgcc -lpthread -lc -lgcc_s -lgcc /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/crtendS.o /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib/crtn.o]
+          arg [/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/collect2] ==> ignore
+          arg [-plugin] ==> ignore
+          arg [/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/liblto_plugin.so] ==> ignore
+          arg [-plugin-opt=/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/lto-wrapper] ==> ignore
+          arg [-plugin-opt=-fresolution=/tmp/ccGjhFW1.res] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lpthread] ==> ignore
+          arg [-plugin-opt=-pass-through=-lc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [--build-id] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [--hash-style=gnu] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [-dynamic-linker] ==> ignore
+          arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+          arg [-pie] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_ca194] ==> ignore
+          arg [-L/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0] ==> dir [/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0]
+          arg [-L/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib] ==> dir [/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib]
+          arg [-L/lib/../lib] ==> dir [/lib/../lib]
+          arg [-L/usr/lib/../lib] ==> dir [/usr/lib/../lib]
+          arg [-L/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../..] ==> dir [/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../..]
+          arg [CMakeFiles/cmTC_ca194.dir/OpenMPTryFlag.cpp.o] ==> ignore
+          arg [-lstdc++] ==> lib [stdc++]
+          arg [-lm] ==> lib [m]
+          arg [-lgomp] ==> lib [gomp]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lpthread] ==> lib [pthread]
+          arg [-lc] ==> lib [c]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+        collapse library dir [/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0] ==> [/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0]
+        collapse library dir [/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../../../lib] ==> [/usr/lib]
+        collapse library dir [/lib/../lib] ==> [/lib]
+        collapse library dir [/usr/lib/../lib] ==> [/usr/lib]
+        collapse library dir [/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/../../..] ==> [/usr/lib]
+        implicit libs: [stdc++;m;gomp;gcc_s;gcc;pthread;c;gcc_s;gcc]
+        implicit objs: []
+        implicit dirs: [/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0;/usr/lib;/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/pkg/share/cmake-3.29/Modules/FindOpenMP.cmake:421 (try_compile)"
+      - "/usr/pkg/share/cmake-3.29/Modules/FindOpenMP.cmake:561 (_OPENMP_GET_SPEC_DATE)"
+      - "CMakeLists.txt:10 (find_package)"
+    description: "Detecting CXX OpenMP version"
+    directories:
+      source: "/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-otLung"
+      binary: "/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-otLung"
+    cmakeVariables:
+      CMAKE_CUDA_ARCHITECTURES: "52"
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "OpenMP_SPECTEST_CXX_"
+      cached: true
+      stdout: |
+        Change Dir: '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-otLung'
+        
+        Run Build Command(s): /usr/pkg/bin/cmake -E env VERBOSE=1 /usr/local/bin/gmake -f Makefile cmTC_c4006/fast
+        gmake[1]: Entering directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-otLung'
+        /usr/local/bin/gmake  -f CMakeFiles/cmTC_c4006.dir/build.make CMakeFiles/cmTC_c4006.dir/build
+        gmake[2]: Entering directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-otLung'
+        Building CXX object CMakeFiles/cmTC_c4006.dir/OpenMPCheckVersion.cpp.o
+        /usr/bin/g++-13   -fopenmp -std=gnu++17 -o CMakeFiles/cmTC_c4006.dir/OpenMPCheckVersion.cpp.o -c /vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-otLung/OpenMPCheckVersion.cpp
+        Linking CXX executable cmTC_c4006
+        /usr/pkg/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c4006.dir/link.txt --verbose=1
+        /usr/bin/g++-13  -fopenmp CMakeFiles/cmTC_c4006.dir/OpenMPCheckVersion.cpp.o -o cmTC_c4006
+        gmake[2]: Leaving directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-otLung'
+        gmake[1]: Leaving directory '/vol/ecrg-solar/woodj4/autograd/build/CMakeFiles/CMakeScratch/TryCompile-otLung'
+        
+      exitCode: 0
+...

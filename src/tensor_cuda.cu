@@ -8,7 +8,13 @@
 
 // Forward declaration of Tensor class to match tensor.cpp
 class Tensor : public std::enable_shared_from_this<Tensor> {
+private:
+    // Random number generator for initialization
+    static std::mt19937& get_generator();
+    static std::vector<float> generate_random_data(size_t rows, size_t cols);
+
 public:
+    // Dimensions and data
     size_t rows;
     size_t cols;
     std::vector<float> data;
@@ -17,11 +23,42 @@ public:
     bool requires_grad;
     std::string creation_op;
 
+    // Constructors
     Tensor(size_t rows, size_t cols, bool requires_grad = false, std::string creation_op = "");
     Tensor(const std::vector<float>& data, size_t rows, size_t cols, bool requires_grad = false, std::string creation_op = "");
-    static std::shared_ptr<Tensor> multiply(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b);
+    
+    // Destructor
+    ~Tensor();
+
+    // Graph operations
+    void clear_graph();
     void backward();
     void debug_gradient_flow();
+
+    // Static operations
+    static std::shared_ptr<Tensor> add(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b);
+    static std::shared_ptr<Tensor> multiply(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b);
+    static std::shared_ptr<Tensor> binary_cross_entropy(std::shared_ptr<Tensor> pred, std::shared_ptr<Tensor> target);
+    static std::shared_ptr<Tensor> cross_entropy(std::shared_ptr<Tensor> pred, std::shared_ptr<Tensor> target);
+
+    // Tensor operations
+    std::shared_ptr<Tensor> reshape(size_t new_rows, size_t new_cols);
+    std::shared_ptr<Tensor> sum();
+    std::shared_ptr<Tensor> expand(size_t dim, size_t copies);
+    std::shared_ptr<Tensor> transpose();
+    
+    // Activation functions
+    std::shared_ptr<Tensor> relu();
+    std::shared_ptr<Tensor> Tanh();
+    std::shared_ptr<Tensor> sigmoid();
+    std::shared_ptr<Tensor> softmax();
+
+    // Utility methods
+    std::vector<size_t> shape();
+    void print_grad();
+
+    // Operator overloads
+    friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor);
 };
 
 class Layer {
@@ -61,6 +98,22 @@ public:
     std::shared_ptr<Tensor> forward(std::shared_ptr<Tensor> input);
 
     // Function to get the parameters (weights and bias)
+    std::vector<std::shared_ptr<Tensor>> get_parameters();
+};
+
+class MaxPool2D : public Layer {
+public:
+    // Member variables
+    size_t kernel_size;
+    size_t stride;
+
+    // Constructor
+    MaxPool2D(size_t kernel_size, size_t stride);
+
+    // Forward pass
+    std::shared_ptr<Tensor> forward(std::shared_ptr<Tensor> input);
+
+    // Get parameters (empty for MaxPool2D)
     std::vector<std::shared_ptr<Tensor>> get_parameters();
 };
 
@@ -238,6 +291,90 @@ __global__ void bce_backward_kernel(const float* targets, const float* outputs, 
     }
 }
 
+__global__ void cross_entropy_forward_kernel(
+    const float* predictions, 
+    const float* targets,
+    float* output,
+    size_t batch_size,
+    size_t num_classes) {
+    
+    int batch_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (batch_idx < batch_size) {
+        float loss = 0.0f;
+        
+        // Calculate cross entropy for this sample
+        for (size_t c = 0; c < num_classes; c++) {
+            size_t idx = batch_idx * num_classes + c;
+            // Add small epsilon to prevent log(0)
+            float pred = fmaxf(predictions[idx], 1e-7f);
+            pred = fminf(pred, 1.0f - 1e-7f);
+            loss += -targets[idx] * logf(pred);
+        }
+        
+        // Store the loss for this sample
+        output[batch_idx] = loss;
+    }
+}
+
+// Forward method implementation
+std::shared_ptr<Tensor> Tensor::cross_entropy(std::shared_ptr<Tensor> predictions, std::shared_ptr<Tensor> targets) {
+    
+    size_t batch_size = predictions->rows;
+    size_t num_classes = predictions->cols;
+    
+    // Verify input dimensions match
+    if (predictions->rows != targets->rows || predictions->cols != targets->cols) {
+        throw std::runtime_error("Predictions and targets dimensions must match");
+    }
+    
+    // Allocate device memory
+    CUDAMemory d_predictions(predictions->data.size());
+    CUDAMemory d_targets(targets->data.size());
+    CUDAMemory d_output(batch_size);
+    
+    // Copy data to device
+    d_predictions.copyToDevice(predictions->data.data(), predictions->data.size());
+    d_targets.copyToDevice(targets->data.data(), targets->data.size());
+    
+    // Set kernel dimensions
+    int block_size = 256;
+    int num_blocks = (batch_size + block_size - 1) / block_size;
+    
+    // Launch kernel
+    cross_entropy_forward_kernel<<<num_blocks, block_size>>>(
+        d_predictions.get(),
+        d_targets.get(),
+        d_output.get(),
+        batch_size,
+        num_classes
+    );
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+    
+    // Copy result back to host
+    std::vector<float> output_data(batch_size);
+    d_output.copyToHost(output_data.data(), output_data.size());
+    
+    // Calculate mean loss across batch
+    float mean_loss = 0.0f;
+    for (size_t i = 0; i < batch_size; i++) {
+        mean_loss += output_data[i];
+    }
+    mean_loss /= static_cast<float>(batch_size);
+    
+    // Create result tensor (scalar output)
+    std::vector<float> final_output = {mean_loss};
+    auto output = std::make_shared<Tensor>(final_output, 1, 1, 
+                                         predictions->requires_grad, "ce");
+    
+    if (predictions->requires_grad) {
+        output->parents = {predictions, targets};
+    }
+    
+    return output;
+}
+
 // CUDA kernel for categorical cross-entropy backward pass
 __global__ void cross_entropy_backward_kernel(const float* targets, const float* outputs, 
                                               const float* grad_output, float* grad_inputs, 
@@ -250,183 +387,472 @@ __global__ void cross_entropy_backward_kernel(const float* targets, const float*
     }
 }
 
+
+// CUDA kernel for convolution forward pass
 __global__ void conv2d_forward_kernel(
     const float* input, const float* weights, const float* bias,
-    float* output,
-    size_t batch_size, size_t in_channels, size_t out_channels,
-    size_t height, size_t width, size_t kernel_size,
-    size_t stride, size_t padding,
+    float* output, size_t batch_size, size_t in_channels, size_t out_channels,
+    size_t height, size_t width, size_t kernel_size, size_t stride, size_t padding,
     size_t output_height, size_t output_width) {
     
-    // Calculate the index of the output element
-    size_t b = blockIdx.x; // Batch index
-    size_t oc = blockIdx.y; // Output channel index
-    size_t oh = threadIdx.x / output_width; // Output height index
-    size_t ow = threadIdx.x % output_width; // Output width index
+    int b = blockIdx.x;  // batch index
+    int oc = blockIdx.y; // output channel index
+    int oh = blockIdx.z / output_width;  // output height index
+    int ow = blockIdx.z % output_width;  // output width index
+    
+    if (b >= batch_size || oc >= out_channels || oh >= output_height || ow >= output_width)
+        return;
+        
+    float sum = 0.0f;
+    
+    // For each input channel
+    #pragma omp parallel for collapse(3)
+    for (int ic = 0; ic < in_channels; ic++) {
+        // For each kernel position
+        for (int kh = 0; kh < kernel_size; kh++) {
+            for (int kw = 0; kw < kernel_size; kw++) {
+                int ih = oh * stride + kh - padding;
+                int iw = ow * stride + kw - padding;
+                
+                if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
+                    int input_idx = b * (in_channels * height * width) +
+                                  ic * (height * width) +
+                                  ih * width + iw;
+                    int weight_idx = oc * (in_channels * kernel_size * kernel_size) +
+                                   ic * (kernel_size * kernel_size) +
+                                   kh * kernel_size + kw;
+                    
+                    sum += input[input_idx] * weights[weight_idx];
+                }
+            }
+        }
+    }
+    
+    // Add bias
+    sum += bias[oc];
+    
+    // Write output
+    int output_idx = b * (out_channels * output_height * output_width) +
+                     oc * (output_height * output_width) +
+                     oh * output_width + ow;
+    output[output_idx] = sum;
+}
 
-    // Ensure we're within output dimensions
-    if (oh < output_height && ow < output_width) {
-        float sum = 0.0f;
+// CUDA kernel for convolution backward pass - input gradients
+__global__ void conv2d_backward_input_kernel(
+    const float* weights, const float* grad_output,
+    float* grad_input, size_t batch_size, size_t in_channels, size_t out_channels,
+    size_t height, size_t width, size_t kernel_size, size_t stride, size_t padding,
+    size_t output_height, size_t output_width) {
+    
+    int b = blockIdx.x;  // batch index
+    int ic = blockIdx.y; // input channel index
+    int h = threadIdx.x; // height index
+    int w = threadIdx.y; // width index
+    
+    if (b >= batch_size || ic >= in_channels || h >= height || w >= width)
+        return;
+        
+    float sum = 0.0f;
+    
+    // For each output channel
+    #pragma omp parallel for collapse(3)
+    for (int oc = 0; oc < out_channels; oc++) {
+        // For each kernel position that could have contributed to this input
+        for (int kh = 0; kh < kernel_size; kh++) {
+            for (int kw = 0; kw < kernel_size; kw++) {
+                int oh = (h + padding - kh) / stride;
+                int ow = (w + padding - kw) / stride;
+                
+                if (oh >= 0 && oh < output_height && ow >= 0 && ow < output_width &&
+                    (oh * stride + kh - padding) == h && (ow * stride + kw - padding) == w) {
+                    
+                    int grad_output_idx = b * (out_channels * output_height * output_width) +
+                                        oc * (output_height * output_width) +
+                                        oh * output_width + ow;
+                    int weight_idx = oc * (in_channels * kernel_size * kernel_size) +
+                                   ic * (kernel_size * kernel_size) +
+                                   kh * kernel_size + kw;
+                    
+                    sum += grad_output[grad_output_idx] * weights[weight_idx];
+                }
+            }
+        }
+    }
+    
+    int input_idx = b * (in_channels * height * width) +
+                    ic * (height * width) +
+                    h * width + w;
+    grad_input[input_idx] = sum;
+}
 
-        // Perform convolution
-        for (size_t ic = 0; ic < in_channels; ic++) {
-            for (size_t kh = 0; kh < kernel_size; kh++) {
-                for (size_t kw = 0; kw < kernel_size; kw++) {
-                    // Calculate input coordinates
-                    int ih = static_cast<int>(oh * stride + kh) - static_cast<int>(padding);
-                    int iw = static_cast<int>(ow * stride + kw) - static_cast<int>(padding);
+// CUDA kernel for convolution backward pass - weight gradients
+__global__ void conv2d_backward_weights_kernel(
+    const float* input, const float* grad_output,
+    float* grad_weights, size_t batch_size, size_t in_channels, size_t out_channels,
+    size_t height, size_t width, size_t kernel_size, size_t stride, size_t padding,
+    size_t output_height, size_t output_width) {
+    
+    int oc = blockIdx.x;  // output channel index
+    int ic = blockIdx.y;  // input channel index
+    int kh = threadIdx.x; // kernel height index
+    int kw = threadIdx.y; // kernel width index
+    
+    if (oc >= out_channels || ic >= in_channels || kh >= kernel_size || kw >= kernel_size)
+        return;
+        
+    float sum = 0.0f;
+    
+    // For each batch
+    #pragma omp parallel for collapse(3)
+    for (int b = 0; b < batch_size; b++) {
+        // For each output position
+        for (int oh = 0; oh < output_height; oh++) {
+            for (int ow = 0; ow < output_width; ow++) {
+                int ih = oh * stride + kh - padding;
+                int iw = ow * stride + kw - padding;
+                
+                if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
+                    int input_idx = b * (in_channels * height * width) +
+                                  ic * (height * width) +
+                                  ih * width + iw;
+                    int grad_output_idx = b * (out_channels * output_height * output_width) +
+                                        oc * (output_height * output_width) +
+                                        oh * output_width + ow;
+                    
+                    sum += input[input_idx] * grad_output[grad_output_idx];
+                }
+            }
+        }
+    }
+    
+    int weight_idx = oc * (in_channels * kernel_size * kernel_size) +
+                     ic * (kernel_size * kernel_size) +
+                     kh * kernel_size + kw;
+    grad_weights[weight_idx] = sum;
+}
 
-                    // Check bounds
-                    if (ih >= 0 && ih < static_cast<int>(height) && 
-                        iw >= 0 && iw < static_cast<int>(width)) {
-                        
-                        // Calculate indices
-                        size_t input_idx = b * (in_channels * height * width) + 
-                                           ic * (height * width) + 
-                                           ih * width + iw;
-                        size_t weight_idx = (ic * kernel_size * kernel_size + 
-                                             kh * kernel_size + kw) * out_channels + oc;
+// Implementation of Conv2D forward pass
+std::shared_ptr<Tensor> Conv2D::forward(std::shared_ptr<Tensor> input) {
+    size_t batch_size = input->rows;
+    size_t height = static_cast<size_t>(std::sqrt(input->cols / in_channels));
+    size_t width = height;
+    
+    size_t output_height = (height + 2 * padding - kernel_size) / stride + 1;
+    size_t output_width = (width + 2 * padding - kernel_size) / stride + 1;
+    
+    // Create device memory
+    CUDAMemory d_input(input->data.size());
+    CUDAMemory d_weights(weights->data.size());
+    CUDAMemory d_bias(bias->data.size());
+    CUDAMemory d_output(batch_size * out_channels * output_height * output_width);
+    
+    // Copy data to device
+    d_input.copyToDevice(input->data.data(), input->data.size());
+    d_weights.copyToDevice(weights->data.data(), weights->data.size());
+    d_bias.copyToDevice(bias->data.data(), bias->data.size());
+    
+    // Set kernel dimensions
+    dim3 gridDim(batch_size, out_channels, output_height * output_width);
+    dim3 blockDim(1, 1, 1);
+    
+    // Launch kernel
+    conv2d_forward_kernel<<<gridDim, blockDim>>>(
+        d_input.get(), d_weights.get(), d_bias.get(),
+        d_output.get(), batch_size, in_channels, out_channels,
+        height, width, kernel_size, stride, padding,
+        output_height, output_width
+    );
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+    
+    // Copy result back to host
+    std::vector<float> output_data(batch_size * out_channels * output_height * output_width);
+    d_output.copyToHost(output_data.data(), output_data.size());
+    
+    // Create result tensor
+    auto output = std::make_shared<Tensor>(output_data, batch_size, 
+                                         out_channels * output_height * output_width,
+                                         true, "Conv2d");
+    output->parents = {input, weights, bias};
+    return output;
+}
 
-                        sum += input[input_idx] * weights[weight_idx];
+// CUDA kernel for maxpool2d forward pass
+__global__ void maxpool2d_forward_kernel(
+    const float* input,
+    float* output,
+    size_t batch_size,
+    size_t channels,
+    size_t height,
+    size_t width,
+    size_t kernel_size,
+    size_t stride,
+    size_t output_height,
+    size_t output_width) {
+    
+    int b = blockIdx.x;  // batch index
+    int c = blockIdx.y;  // channel index
+    int oh = blockIdx.z / output_width;  // output height index
+    int ow = blockIdx.z % output_width;  // output width index
+    
+    if (b >= batch_size || c >= channels || oh >= output_height || ow >= output_width)
+        return;
+    
+    // Calculate the window boundaries in the input
+    int h_start = oh * stride;
+    int w_start = ow * stride;
+    int h_end = min(h_start + kernel_size, height);
+    int w_end = min(w_start + kernel_size, width);
+    
+    // Find maximum value in the window
+    float max_val = -INFINITY;
+    
+    #pragma omp parallel for collapse(2)
+    for (int h = h_start; h < h_end; h++) {
+        for (int w = w_start; w < w_end; w++) {
+            int input_idx = b * (channels * height * width) +
+                           c * (height * width) +
+                           h * width + w;
+            max_val = max(max_val, input[input_idx]);
+        }
+    }
+    
+    // Write output
+    int output_idx = b * (channels * output_height * output_width) +
+                     c * (output_height * output_width) +
+                     oh * output_width + ow;
+    output[output_idx] = max_val;
+}
+
+// Method to perform forward pass for MaxPool2D
+std::shared_ptr<Tensor> MaxPool2D::forward(std::shared_ptr<Tensor> input) {
+    size_t batch_size = input->rows;
+    size_t channels = 32;  // Assuming input from Conv2D with 32 channels
+    size_t height = static_cast<size_t>(std::sqrt(input->cols / channels));
+    size_t width = height;
+    
+    size_t output_height = (height - kernel_size) / stride + 1;
+    size_t output_width = (width - kernel_size) / stride + 1;
+    
+    // Create device memory
+    CUDAMemory d_input(input->data.size());
+    CUDAMemory d_output(batch_size * channels * output_height * output_width);
+    
+    // Copy input to device
+    d_input.copyToDevice(input->data.data(), input->data.size());
+    
+    // Set kernel dimensions
+    dim3 gridDim(batch_size, channels, output_height * output_width);
+    dim3 blockDim(1, 1, 1);
+    
+    // Launch kernel
+    maxpool2d_forward_kernel<<<gridDim, blockDim>>>(
+        d_input.get(),
+        d_output.get(),
+        batch_size,
+        channels,
+        height,
+        width,
+        kernel_size,
+        stride,
+        output_height,
+        output_width
+    );
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+    
+    // Copy result back to host
+    std::vector<float> output_data(batch_size * channels * output_height * output_width);
+    d_output.copyToHost(output_data.data(), output_data.size());
+    
+    // Create result tensor
+    auto output = std::make_shared<Tensor>(output_data, batch_size, 
+                                         channels * output_height * output_width,
+                                         input->requires_grad, "maxpool2d");
+    if (input->requires_grad) {
+        output->parents = {input};
+    }
+    return output;
+}
+
+__global__ void maxpool2d_backward_kernel(
+    const float* input_data,
+    float* grad_input,
+    const float* grad_output,
+    size_t batch_size,
+    size_t channels,
+    size_t height,
+    size_t width,
+    size_t kernel_size,
+    size_t stride,
+    size_t new_height,
+    size_t new_width) {
+    
+    int b = blockIdx.x;
+    int c = blockIdx.y;
+    int h = threadIdx.x;
+    int w = threadIdx.y;
+
+    if (b >= batch_size || c >= channels || h >= height || w >= width)
+        return;
+
+    size_t oh = h / stride;
+    size_t ow = w / stride;
+    
+    if (oh < new_height && ow < new_width) {
+        // Get current input value
+        float current_val = input_data[b * (channels * height * width) +
+                                     c * (height * width) +
+                                     h * width + w];
+        
+        // Check if this was the max value
+        bool is_max = true;
+        
+        // Compare with all values in the kernel window
+        #pragma omp parallel for collapse(2)
+        for (size_t kh = 0; kh < kernel_size && is_max; kh++) {
+            for (size_t kw = 0; kw < kernel_size && is_max; kw++) {
+                size_t h_index = oh * stride + kh;
+                size_t w_index = ow * stride + kw;
+                
+                if (h_index < height && w_index < width) {
+                    float val = input_data[b * (channels * height * width) +
+                                         c * (height * width) +
+                                         h_index * width + w_index];
+                    if (val > current_val) {
+                        is_max = false;
                     }
                 }
             }
         }
-
-        // Add bias
-        sum += bias[oc];
-
-        // Write to output
-        size_t output_idx = b * (out_channels * output_height * output_width) +
-                            oc * (output_height * output_width) +
-                            oh * output_width + ow;
-        output[output_idx] = sum;
+        
+        // If this was the max value, propagate the gradient
+        if (is_max) {
+            size_t grad_idx = b * (channels * new_height * new_width) +
+                             c * (new_height * new_width) +
+                             oh * new_width + ow;
+            atomicAdd(&grad_input[b * (channels * height * width) +
+                                c * (height * width) +
+                                h * width + w],
+                     grad_output[grad_idx]);
+        }
     }
 }
 
-// std::shared_ptr<Tensor> Conv2D::forward(std::shared_ptr<Tensor> input) {
-//     size_t batch_size = input->rows;
-//     size_t in_channels = input->cols / (input->rows * input->cols);
-//     size_t out_channels = weights->rows;
+// Kernel to compute mean for each feature
+__global__ void batchnorm_mean_kernel(
+    const float* input,
+    float* mean,
+    size_t batch_size,
+    size_t num_features) {
     
-//     size_t height = 28;  // MNIST image height
-//     size_t width = 28;   // MNIST image width
-//     size_t kernel_size = 3; // From model architecture
-//     size_t stride = 1;
-//     size_t padding = 1;
+    int feature = blockIdx.x * blockDim.x + threadIdx.x;
+    if (feature >= num_features) return;
+
+    float sum = 0.0f;
+    for (int batch = 0; batch < batch_size; batch++) {
+        sum += input[batch * num_features + feature];
+    }
+    mean[feature] = sum / batch_size;
+}
+
+// Kernel to compute variance for each feature
+__global__ void batchnorm_var_kernel(
+    const float* input,
+    const float* mean,
+    float* var,
+    size_t batch_size,
+    size_t num_features) {
     
-//     size_t output_height = (height + 2 * padding - kernel_size) / stride + 1;
-//     size_t output_width = (width + 2 * padding - kernel_size) / stride + 1;
+    int feature = blockIdx.x * blockDim.x + threadIdx.x;
+    if (feature >= num_features) return;
 
-//     std::vector<float> output_data(batch_size * out_channels * output_height * output_width, 0.0f);
-//     auto output = std::make_shared<Tensor>(output_data, batch_size, 
-//                                            out_channels * output_height * output_width,
-//                                            true, "Conv2d");
+    float sum = 0.0f;
+    float mean_val = mean[feature];
+    
+    for (int batch = 0; batch < batch_size; batch++) {
+        float diff = input[batch * num_features + feature] - mean_val;
+        sum += diff * diff;
+    }
+    var[feature] = sum / batch_size;
+}
 
-//     // Iterate over the batch, output channels, and output spatial dimensions
-//     for (size_t b = 0; b < batch_size; b++) {
-//         for (size_t oc = 0; oc < out_channels; oc++) {
-//             for (size_t oh = 0; oh < output_height; oh++) {
-//                 for (size_t ow = 0; ow < output_width; ow++) {
-//                     float sum = 0.0f;
+// Kernel for the main batchnorm forward computation
+__global__ void batchnorm_forward_kernel(
+    const float* input,
+    const float* gamma,
+    const float* beta,
+    const float* mean,
+    const float* var,
+    float* output,
+    size_t batch_size,
+    size_t num_features,
+    float epsilon) {
+    
+    int batch = blockIdx.x;
+    int feature = blockIdx.y * blockDim.x + threadIdx.x;
+    
+    if (batch >= batch_size || feature >= num_features) return;
+    
+    int idx = batch * num_features + feature;
+    float normalized = (input[idx] - mean[feature]) / sqrt(var[feature] + epsilon);
+    output[idx] = gamma[feature] * normalized + beta[feature];
+}
 
-//                     // Perform convolution
-//                     for (size_t ic = 0; ic < in_channels; ic++) {
-//                         for (size_t kh = 0; kh < kernel_size; kh++) {
-//                             for (size_t kw = 0; kw < kernel_size; kw++) {
-//                                 int ih = static_cast<int>(oh * stride + kh) - static_cast<int>(padding);
-//                                 int iw = static_cast<int>(ow * stride + kw) - static_cast<int>(padding);
+// Kernel for backward pass
+__global__ void batchnorm_backward_kernel(
+    const float* input,
+    const float* grad_output,
+    const float* gamma,
+    const float* mean,
+    const float* var,
+    float* grad_input,
+    float* grad_gamma,
+    float* grad_beta,
+    size_t batch_size,
+    size_t num_features,
+    float epsilon) {
+    
+    int feature = blockIdx.x * blockDim.x + threadIdx.x;
+    if (feature >= num_features) return;
 
-//                                 // Check if the input coordinates are within the input tensor bounds
-//                                 if (ih >= 0 && ih < static_cast<int>(height) && 
-//                                     iw >= 0 && iw < static_cast<int>(width)) {
-//                                     size_t input_idx = b * (in_channels * height * width) + 
-//                                                      ic * (height * width) + 
-//                                                      ih * width + iw;
-//                                     size_t weight_idx = (ic * kernel_size * kernel_size + 
-//                                                          kh * kernel_size + kw) * out_channels + oc;
-//                                     sum += input->data[input_idx] * weights->data[weight_idx];
-//                                 }
-//                             }
-//                         }
-//                     }
-
-//                     // Add the bias
-//                     sum += bias->data[oc];
-
-//                     // Store the result in the output tensor
-//                     size_t output_idx = b * (out_channels * output_height * output_width) +
-//                                         oc * (output_height * output_width) +
-//                                         oh * output_width + ow;
-//                     output->data[output_idx] = sum;
-//                 }
-//             }
-//         }
-//     }
-
-//     return output;
-// }
-
-__global__ void conv2d_backward_kernel(
-    const float* d_output,          // Gradient of the output (next layer)
-    const float* input,             // Input to the Conv2D layer
-    float* d_weights,               // Gradient of the weights
-    float* d_bias,                  // Gradient of the bias
-    float* d_input,                 // Gradient of the input
-    size_t batch_size,              // Batch size
-    size_t in_channels,             // Number of input channels
-    size_t out_channels,            // Number of output channels
-    size_t height,                  // Input height
-    size_t width,                   // Input width
-    size_t kernel_size,             // Kernel size (assuming square kernels)
-    size_t stride,                  // Stride
-    size_t padding)                 // Padding
-{
-    // Calculate output dimensions
-    size_t output_height = (height + 2 * padding - kernel_size) / stride + 1;
-    size_t output_width = (width + 2 * padding - kernel_size) / stride + 1;
-
-    // Calculate global thread indices
-    size_t b = blockIdx.x; // Batch index
-    size_t oc = blockIdx.y; // Output channel index
-    size_t oh = blockIdx.z; // Output height index
-    size_t ow = threadIdx.x; // Output width index
-
-    if (b < batch_size && oc < out_channels && oh < output_height && ow < output_width) {
-        float grad_out = d_output[b * (out_channels * output_height * output_width) +
-                                   oc * (output_height * output_width) +
-                                   oh * output_width + ow];
-
-        // Compute gradient for bias
-        atomicAdd(&d_bias[oc], grad_out);
-
-        // Compute gradients for weights and input
-        for (size_t ic = 0; ic < in_channels; ic++) {
-            for (size_t kh = 0; kh < kernel_size; kh++) {
-                for (size_t kw = 0; kw < kernel_size; kw++) {
-                    // Calculate the input location based on padding and stride
-                    int ih = oh * stride + kh - padding;
-                    int iw = ow * stride + kw - padding;
-
-                    if (ih >= 0 && ih < static_cast<int>(height) &&
-                        iw >= 0 && iw < static_cast<int>(width)) {
-                        // Compute weight gradients
-                        atomicAdd(&d_weights[(ic * kernel_size * kernel_size + 
-                                               kh * kernel_size + kw) * out_channels + oc], 
-                                   input[b * (in_channels * height * width) + 
-                                         ic * (height * width) + 
-                                         ih * width + iw] * grad_out);
-
-                        // Compute input gradients
-                        atomicAdd(&d_input[b * (in_channels * height * width) + 
-                                            ic * (height * width) + 
-                                            ih * width + iw], 
-                                   d_weights[(ic * kernel_size * kernel_size + 
-                                             kh * kernel_size + kw) * out_channels + oc] * grad_out);
-                    }
-                }
-            }
-        }
+    float sum_grad = 0.0f;
+    float sum_grad_h = 0.0f;
+    float sum_grad_h_input = 0.0f;
+    
+    float mean_val = mean[feature];
+    float var_val = var[feature];
+    float inv_std = 1.0f / sqrt(var_val + epsilon);
+    
+    // First pass to compute sums
+    for (int batch = 0; batch < batch_size; batch++) {
+        int idx = batch * num_features + feature;
+        float x_centered = input[idx] - mean_val;
+        float h = x_centered * inv_std;
+        
+        sum_grad += grad_output[idx];
+        sum_grad_h += grad_output[idx] * h;
+        sum_grad_h_input += grad_output[idx] * x_centered;
+    }
+    
+    // Update gamma and beta gradients
+    grad_gamma[feature] = sum_grad_h;
+    grad_beta[feature] = sum_grad;
+    
+    // Second pass to compute input gradients
+    float gamma_val = gamma[feature];
+    float factor = gamma_val * inv_std / batch_size;
+    
+    for (int batch = 0; batch < batch_size; batch++) {
+        int idx = batch * num_features + feature;
+        float x_centered = input[idx] - mean_val;
+        
+        grad_input[idx] = factor * (
+            batch_size * grad_output[idx] 
+            - sum_grad 
+            - (x_centered * inv_std * inv_std * sum_grad_h_input)
+        );
     }
 }
 
@@ -439,8 +865,6 @@ void Tensor::backward() {
     }
 
     if (creation_op == "add") {
-        std::cout << "Add backward" << std::endl;
-
         auto a = parents[0];
         auto b = parents[1];
 
@@ -469,8 +893,6 @@ void Tensor::backward() {
         b->backward();
     }
     if (creation_op == "mul") {
-        std::cout << "Multiply backward" << std::endl;
-
         auto inputs = parents[0];
         auto weights = parents[1];
 
@@ -521,8 +943,6 @@ void Tensor::backward() {
         inputs->backward();
     }
     if (creation_op == "relu") {
-        std::cout << "Relu backward" << std::endl;
-
         auto input = parents[0];
 
         // Allocate device memory
@@ -558,8 +978,6 @@ void Tensor::backward() {
         parents[0]->backward();
     }
     if (creation_op == "bce") {
-        std::cout << "BCE backward" << std::endl;
-
         auto targets = parents[0];
         auto outputs = parents[1];
 
@@ -611,117 +1029,133 @@ void Tensor::backward() {
             parents[0]->backward();
     }
     if (creation_op == "Conv2d") {
-        // Convolutional backward implementation
         auto input = parents[0];
         auto weights = parents[1];
         auto bias = parents[2];
 
-        // Retrieve necessary dimensions
         size_t batch_size = input->rows;
         size_t in_channels = input->cols / (input->rows * input->cols);
         size_t out_channels = weights->rows;
-        size_t height = static_cast<size_t>(std::sqrt(input->cols / in_channels));
-        size_t width = height;
+        
+        size_t height = 28;  // MNIST image height
+        size_t width = 28;   // MNIST image width
+        size_t kernel_size = 3; // From model architecture
         size_t stride = 1;
         size_t padding = 1;
-        size_t kernel_size = weights->cols / in_channels; // Assuming square kernel
+        
         size_t output_height = (height + 2 * padding - kernel_size) / stride + 1;
         size_t output_width = (width + 2 * padding - kernel_size) / stride + 1;
-
-        // Allocate device memory for gradients
-        float* d_weights, *d_bias, *d_input, *d_grad_output;
-        cudaMalloc(&d_weights, weights->data.size() * sizeof(float));
-        cudaMalloc(&d_bias, bias->data.size() * sizeof(float));
-        cudaMalloc(&d_input, input->data.size() * sizeof(float));
-        cudaMalloc(&d_grad_output, grad.size() * sizeof(float));
-
-        // Copy data to device
-        cudaMemcpy(d_weights, weights->data.data(), weights->data.size() * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_bias, bias->data.data(), bias->data.size() * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_input, input->data.data(), input->data.size() * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_grad_output, grad.data(), grad.size() * sizeof(float), cudaMemcpyHostToDevice);
-
-        // Launch the backward kernel
-        dim3 block_size(output_width); // Each thread computes one output pixel
-        dim3 grid_size(batch_size, out_channels, output_height); // Each block computes one output channel for a batch
         
-        conv2d_backward_kernel<<<grid_size, block_size>>>(
-            d_grad_output,         // Gradient of the output (next layer)
-            d_input,               // Input to the Conv2D layer
-            d_weights,             // Gradient of the weights
-            d_bias,                // Gradient of the bias
-            d_input,               // Gradient of the input
-            batch_size,
-            in_channels,
-            out_channels,
-            height,
-            width,
-            kernel_size,
-            stride,
-            padding
+        // Allocate device memory
+        CUDAMemory d_input(input->data.size());
+        CUDAMemory d_weights(weights->data.size());
+        CUDAMemory d_grad_output(grad.size());
+        CUDAMemory d_grad_input(input->grad.size());
+        CUDAMemory d_grad_weights(weights->grad.size());
+        CUDAMemory d_grad_bias(bias->grad.size());
+        
+        // Copy data to device
+        d_input.copyToDevice(input->data.data(), input->data.size());
+        d_weights.copyToDevice(weights->data.data(), weights->data.size());
+        d_grad_output.copyToDevice(grad.data(), grad.size());
+        
+        // Launch kernel for input gradients
+        dim3 gridDim_input(batch_size, in_channels, 1);
+        dim3 blockDim_input(height, width, 1);
+        
+        conv2d_backward_input_kernel<<<gridDim_input, blockDim_input>>>(
+            d_weights.get(), d_grad_output.get(),
+            d_grad_input.get(), batch_size, in_channels, out_channels,
+            height, width, kernel_size, stride, padding,
+            output_height, output_width
         );
-
-        // Copy the gradients back to the Tensor objects
-        std::vector<float> weights_grad(weights->data.size(), 0.0f);
-        std::vector<float> bias_grad(bias->data.size(), 0.0f);
-        std::vector<float> input_grad(input->data.size(), 0.0f);
-
-        cudaMemcpy(weights_grad.data(), d_weights, weights->data.size() * sizeof(float), cudaMemcpyDeviceToHost);
-        cudaMemcpy(bias_grad.data(), d_bias, bias->data.size() * sizeof(float), cudaMemcpyDeviceToHost);
-        cudaMemcpy(input_grad.data(), d_input, input->data.size() * sizeof(float), cudaMemcpyDeviceToHost);
-
-        // Update the gradients in the Tensor objects
-        weights->grad = weights_grad;
-        bias->grad = bias_grad;
-        input->grad = input_grad;
-
-        // Free device memory
-        cudaFree(d_weights);
-        cudaFree(d_bias);
-        cudaFree(d_input);
-        cudaFree(d_grad_output);
-
-        // Return the gradient of the input tensor for further backpropagation
+        
+        // Launch kernel for weight gradients
+        dim3 gridDim_weights(out_channels, in_channels, 1);
+        dim3 blockDim_weights(kernel_size, kernel_size, 1);
+        
+        conv2d_backward_weights_kernel<<<gridDim_weights, blockDim_weights>>>(
+            d_input.get(), d_grad_output.get(),
+            d_grad_weights.get(), batch_size, in_channels, out_channels,
+            height, width, kernel_size, stride, padding,
+            output_height, output_width
+        );
+        
+        // Copy gradients back to host
+        d_grad_input.copyToHost(input->grad.data(), input->grad.size());
+        d_grad_weights.copyToHost(weights->grad.data(), weights->grad.size());
+        
+        // For bias, just sum gradients across batch and spatial dimensions
+        for (size_t oc = 0; oc < out_channels; oc++) {
+            float bias_grad = 0.0f;
+            for (size_t b = 0; b < batch_size; b++) {
+                for (size_t h = 0; h < output_height; h++) {
+                    for (size_t w = 0; w < output_width; w++) {
+                        size_t idx = b * (out_channels * output_height * output_width) +
+                                    oc * (output_height * output_width) +
+                                    h * output_width + w;
+                        bias_grad += grad[idx];
+                    }
+                }
+            }
+            bias->grad[oc] += bias_grad;
+        }
+        
         input->backward();
+        weights->backward();
         bias->backward();
     }
 
     if (creation_op == "maxpool2d") {
         auto input = parents[0];
         size_t batch_size = input->rows;
-        size_t in_channels = input->cols / (input->rows * input->cols);
-        size_t height = input->rows;
-        size_t width = input->cols;
-        size_t new_height = (height - 2) / 2 + 1;
-        size_t new_width = (width - 2) / 2 + 1;
-        
-        #pragma omp parallel for collapse(4)
-        for (size_t b = 0; b < batch_size; b++) {
-            for (size_t ic = 0; ic < in_channels; ic++) {
-                for (size_t h = 0; h < height; h++) {
-                    for (size_t w = 0; w < width; w++) {
-                        float max_val = -1e9;
-                        size_t max_h = 0;
-                        size_t max_w = 0;
-                        for (size_t kh = 0; kh < 2; kh++) {
-                            for (size_t kw = 0; kw < 2; kw++) {
-                                size_t nh = h + kh;
-                                size_t nw = w + kw;
-                                if (nh < height && nw < width) {
-                                    float val = input->data[b * height * width + ic * height * width + nh * width + nw];
-                                    if (val > max_val) {
-                                        max_val = val;
-                                        max_h = nh;
-                                        max_w = nw;
-                                    }
-                                }
-                            }
-                        }
-                        input->grad[b * height * width + ic * height * width + max_h * width + max_w] += grad[b * height * width + ic * height * width + h * width + w];
-                    }
-                }
-            }
+        size_t in_channels = 32;  // From previous Conv2D
+        size_t height = static_cast<size_t>(std::sqrt(input->cols / in_channels));
+        size_t width = height;
+        size_t kernel_size = 2;
+        size_t stride = 2;
+        size_t new_height = (height - kernel_size) / stride + 1;
+        size_t new_width = (width - kernel_size) / stride + 1;
+
+        // Initialize gradients if needed
+        if (input->grad.empty()) {
+            input->grad.resize(input->data.size(), 0.0f);
         }
+
+        // Allocate device memory
+        CUDAMemory d_input(input->data.size());
+        CUDAMemory d_grad_output(grad.size());
+        CUDAMemory d_grad_input(input->grad.size());
+
+        // Copy data to device
+        d_input.copyToDevice(input->data.data(), input->data.size());
+        d_grad_output.copyToDevice(grad.data(), grad.size());
+        d_grad_input.copyToDevice(input->grad.data(), input->grad.size());
+
+        // Set kernel dimensions
+        dim3 gridDim(batch_size, in_channels, 1);
+        dim3 blockDim(height, width, 1);
+
+        // Launch kernel
+        maxpool2d_backward_kernel<<<gridDim, blockDim>>>(
+            d_input.get(),
+            d_grad_input.get(),
+            d_grad_output.get(),
+            batch_size,
+            in_channels,
+            height,
+            width,
+            kernel_size,
+            stride,
+            new_height,
+            new_width
+        );
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
+
+        // Copy results back to host
+        d_grad_input.copyToHost(input->grad.data(), input->grad.size());
+
         input->backward();
     }
     if (creation_op == "flatten") {
@@ -735,61 +1169,74 @@ void Tensor::backward() {
         auto gamma = parents[1];
         auto beta = parents[2];
         float eps = 1e-5f;
-        
+
+        size_t batch_size = input->rows;
+        size_t num_features = input->cols;
+
+        // Initialize gradients if empty
         if (input->grad.empty()) input->grad.resize(input->data.size(), 0.0f);
         if (gamma->grad.empty()) gamma->grad.resize(gamma->data.size(), 0.0f);
         if (beta->grad.empty()) beta->grad.resize(beta->data.size(), 0.0f);
 
-        size_t batch_size = input->rows;
-        size_t num_features = gamma->cols;
-        
-        // Compute batch mean
-        std::vector<float> batch_mean(num_features, 0.0f);
-        #pragma omp parallel for collapse(1)
-        for (size_t j = 0; j < num_features; j++) {
-            for (size_t i = 0; i < batch_size; i++) {
-                batch_mean[j] += input->data[i * num_features + j];
-            }
-            batch_mean[j] /= batch_size;
-        }
+        // Allocate device memory
+        CUDAMemory d_input(input->data.size());
+        CUDAMemory d_gamma(gamma->data.size());
+        CUDAMemory d_mean(num_features);
+        CUDAMemory d_var(num_features);
+        CUDAMemory d_grad_output(grad.size());
+        CUDAMemory d_grad_input(input->grad.size());
+        CUDAMemory d_grad_gamma(gamma->grad.size());
+        CUDAMemory d_grad_beta(beta->grad.size());
 
-        // Compute batch variance
-        std::vector<float> batch_var(num_features, 0.0f);
-        #pragma omp parallel for collapse(1)
-        for (size_t j = 0; j < num_features; j++) {
-            for (size_t i = 0; i < batch_size; i++) {
-                float diff = input->data[i * num_features + j] - batch_mean[j];
-                batch_var[j] += diff * diff;
-            }
-            batch_var[j] = batch_var[j] / batch_size + eps;
-        }
+        // Copy data to device
+        d_input.copyToDevice(input->data.data(), input->data.size());
+        d_gamma.copyToDevice(gamma->data.data(), gamma->data.size());
+        d_grad_output.copyToDevice(grad.data(), grad.size());
 
-        // Compute gradients for gamma and 
-        for (size_t j = 0; j < num_features; j++) {
-            float dgamma = 0.0f;
-            float dbeta = 0.0f;
-            for (size_t i = 0; i < batch_size; i++) {
-                size_t idx = i * num_features + j;
-                float x_normalized = (input->data[idx] - batch_mean[j]) / std::sqrt(batch_var[j]);
-                dgamma += grad[idx] * x_normalized;
-                dbeta += grad[idx];
-            }
-            gamma->grad[j] += dgamma;
-            beta->grad[j] += dbeta;
-        }
+        // Compute mean and variance
+        int block_size = 256;
+        int num_blocks = (num_features + block_size - 1) / block_size;
 
-        // Compute gradients for input
-        #pragma omp parallel for collapse(2)
-        for (size_t i = 0; i < batch_size; i++) {
-            for (size_t j = 0; j < num_features; j++) {
-                size_t idx = i * num_features + j;
-                float x_centered = input->data[idx] - batch_mean[j];
-                float std_inv = 1.0f / std::sqrt(batch_var[j]);
-                float dx_normalized = grad[idx] * gamma->data[j];
-                input->grad[idx] += dx_normalized * std_inv;
-            }
-        }
+        batchnorm_mean_kernel<<<num_blocks, block_size>>>(
+            d_input.get(),
+            d_mean.get(),
+            batch_size,
+            num_features
+        );
+        CUDA_CHECK(cudaGetLastError());
 
+        batchnorm_var_kernel<<<num_blocks, block_size>>>(
+            d_input.get(),
+            d_mean.get(),
+            d_var.get(),
+            batch_size,
+            num_features
+        );
+        CUDA_CHECK(cudaGetLastError());
+
+        // Compute gradients
+        batchnorm_backward_kernel<<<num_blocks, block_size>>>(
+            d_input.get(),
+            d_grad_output.get(),
+            d_gamma.get(),
+            d_mean.get(),
+            d_var.get(),
+            d_grad_input.get(),
+            d_grad_gamma.get(),
+            d_grad_beta.get(),
+            batch_size,
+            num_features,
+            eps
+        );
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
+
+        // Copy results back to host
+        d_grad_input.copyToHost(input->grad.data(), input->grad.size());
+        d_grad_gamma.copyToHost(gamma->grad.data(), gamma->grad.size());
+        d_grad_beta.copyToHost(beta->grad.data(), beta->grad.size());
+
+        // Continue backpropagation
         input->backward();
         gamma->backward();
         beta->backward();
