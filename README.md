@@ -16,10 +16,15 @@ $ g++ tensor.cpp -o output
 
 ```bash
 $ g++ -fopenmp -O3 tensor.cpp -o output
+$ ./out
 ```
 
-Then run
+
+(Optional) compile with GPU acceleration through cuda.
 
 ```bash
-$ ./out
+$ cd build
+$ cmake .. 
+$ make
+$ ./tensor_test
 ```
