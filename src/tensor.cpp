@@ -66,7 +66,6 @@ public:
             grad = std::vector<float>(rows * cols, 1.0f);
         }
 
-        
         if (creation_op == "add") {
             for (const auto& parent : parents) {
                 // Initialize parent gradients if needed
@@ -1236,235 +1235,250 @@ std::pair<std::vector<std::shared_ptr<Tensor>>, std::vector<std::shared_ptr<Tens
     return {inputs, targets};
 }
 
-int main() {
-    std::cout << "Loading MNIST dataset..." << std::endl;
-    auto [inputs, targets] = load_mnist("mnist_train.csv", 1000);
-    std::cout << "Loaded " << inputs.size() << " samples" << std::endl;
-
-    // Model architecture
-    auto model = std::make_shared<Sequential>();
-    model->add(std::make_shared<Conv2D>(1, 16, 3, 1, 1));
-    model->add(std::make_shared<BatchNorm2D>(16));
-    model->add(std::make_shared<ReLU>());
-    model->add(std::make_shared<Dropout>(0.1));
-    model->add(std::make_shared<Conv2D>(16, 32, 3, 2, 1));
-    model->add(std::make_shared<BatchNorm2D>(32));
-    model->add(std::make_shared<ReLU>());
-    model->add(std::make_shared<Dropout>(0.1));
-    model->add(std::make_shared<MaxPool2D>(2, 2));            
-    model->add(std::make_shared<Flatten>());                   
-    model->add(std::make_shared<Linear>(7*7*32, 128));        
-    model->add(std::make_shared<ReLU>());
-    model->add(std::make_shared<Linear>(128, 10));         
-    model->add(std::make_shared<Softmax>());
-
-    auto parameters = model->get_parameters();
-    SGD optimizer(parameters, 0.001f);
-
-    const size_t epochs = 50;
-    const size_t batch_size = 64;
-    const size_t print_every = 1;
-
-    for (size_t epoch = 0; epoch < epochs; epoch++) {
-        float epoch_loss = 0.0f;
-        size_t correct = 0;
-        size_t total = 0;
-
-        std::vector<size_t> indices(inputs.size());
-        std::iota(indices.begin(), indices.end(), 0);
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::shuffle(indices.begin(), indices.end(), gen);
-
-        size_t num_batches = (inputs.size() + batch_size - 1) / batch_size;
-
-        for (size_t batch = 0; batch < num_batches; batch++) {
-            size_t current_batch_size = std::min(batch_size, inputs.size() - batch * batch_size);
-
-            std::vector<float> batch_input_data;
-            std::vector<float> batch_target_data;
-            batch_input_data.reserve(current_batch_size * 784);
-            batch_target_data.reserve(current_batch_size * 10);
-
-            for (size_t i = 0; i < current_batch_size; i++) {
-                size_t idx = indices[batch * batch_size + i];
-                batch_input_data.insert(batch_input_data.end(), inputs[idx]->data.begin(), inputs[idx]->data.end());
-
-                std::vector<float> one_hot(10, 0.0f);
-                one_hot[static_cast<size_t>(targets[idx]->data[0])] = 1.0f;
-                batch_target_data.insert(batch_target_data.end(), one_hot.begin(), one_hot.end());
-            }
-
-            auto batch_input = std::make_shared<Tensor>(batch_input_data, current_batch_size, 784, true);
-            auto batch_target = std::make_shared<Tensor>(batch_target_data, current_batch_size, 10, true);
-
-            model->train();
-            optimizer.zero_grad();
-            auto batch_output = model->forward(batch_input);
-            auto loss = Tensor::cross_entropy(batch_output, batch_target);
-
-            loss->grad = std::vector<float>(loss->data.size(), 1.0f);
-            loss->backward();
-            optimizer.step();
-
-            float batch_loss = loss->data[0];
-            epoch_loss += batch_loss * current_batch_size;
-
-            // Track correct predictions per batch
-            size_t batch_correct = 0;
-            for (size_t i = 0; i < current_batch_size; i++) {
-                size_t predicted = 0;
-                float max_val = batch_output->data[i * 10];
-                for (size_t j = 1; j < 10; j++) {
-                    if (batch_output->data[i * 10 + j] > max_val) {
-                        max_val = batch_output->data[i * 10 + j];
-                        predicted = j;
-                    }
-                }
-                // Get actual label
-                size_t actual = static_cast<size_t>(targets[indices[batch * batch_size + i]]->data[0]);
-                if (predicted == actual) {
-                    batch_correct++;
-                }
-            }
-            correct += batch_correct;
-            total += current_batch_size;
-
-            if (batch % print_every == 0) {
-                float accuracy = static_cast<float>(correct) / total * 100.0f;
-                std::cout << "Epoch " << epoch << " - Batch " << batch << "/" << num_batches << " - Loss: " << batch_loss << " - Accuracy: " << accuracy << "%" << std::endl;
-            }
-        }
-    }
-}
-
 // int main() {
-//     try {
-//         // Load dataset
-//         std::cout << "Loading MNIST dataset..." << std::endl;
-//         auto [inputs, targets] = load_mnist("mnist_train.csv", 1000);
-//         std::cout << "Loaded " << inputs.size() << " samples" << std::endl;
-        
-//         // Create model with larger architecture
-//         auto model = std::make_shared<Sequential>();
-//         model->add(std::make_shared<Linear>(784, 512, true));  // Larger first layer
-//         model->add(std::make_shared<ReLU>());
-//         model->add(std::make_shared<Linear>(512, 256, true));  // Larger second layer
-//         model->add(std::make_shared<ReLU>());
-//         model->add(std::make_shared<Linear>(256, 10, true));
-//         model->add(std::make_shared<Softmax>());
-        
-//         auto parameters = model->get_parameters();
-//         SGD optimizer(parameters, 0.01f);  // Increased learning rate
-        
-//         const size_t epochs = 10;
-//         const size_t batch_size = 32;
-//         const size_t print_every = 1;
-        
-//         for (size_t epoch = 0; epoch < epochs; epoch++) {
-//             float epoch_loss = 0.0f;
-//             size_t correct = 0;
-//             size_t total = 0;
-            
-//             // Shuffle dataset
-//             std::vector<size_t> indices(inputs.size());
-//             std::iota(indices.begin(), indices.end(), 0);
-//             std::random_device rd;
-//             std::mt19937 gen(rd());
-//             std::shuffle(indices.begin(), indices.end(), gen);
-            
-//             // Handle partial batches correctly
-//             size_t num_batches = (inputs.size() + batch_size - 1) / batch_size;
-            
-//             for (size_t batch = 0; batch < num_batches; batch++) {
-//                 // Calculate actual batch size (might be smaller for last batch)
-//                 size_t current_batch_size = std::min(batch_size, 
-//                                                    inputs.size() - batch * batch_size);
-                
-//                 // Create batch tensors
-//                 std::vector<float> batch_input_data;
-//                 std::vector<float> batch_target_data;
-//                 batch_input_data.reserve(current_batch_size * 784);
-//                 batch_target_data.reserve(current_batch_size * 10);
-                
-//                 for (size_t i = 0; i < current_batch_size; i++) {
-//                     size_t idx = indices[batch * batch_size + i];
-//                     batch_input_data.insert(batch_input_data.end(), 
-//                                           inputs[idx]->data.begin(), 
-//                                           inputs[idx]->data.end());
-                    
-//                     // Create one-hot target
-//                     std::vector<float> one_hot(10, 0.0f);
-//                     one_hot[static_cast<size_t>(targets[idx]->data[0])] = 1.0f;
-//                     batch_target_data.insert(batch_target_data.end(),
-//                                            one_hot.begin(),
-//                                            one_hot.end());
-//                 }
-                
-//                 auto batch_input = std::make_shared<Tensor>(batch_input_data, 
-//                                                           current_batch_size, 784, true);
-//                 auto batch_target = std::make_shared<Tensor>(batch_target_data, 
-//                                                            current_batch_size, 10, true);
-                
-//                 // Forward pass
-//                 optimizer.zero_grad();
-//                 auto batch_output = model->forward(batch_input);
-//                 auto loss = Tensor::cross_entropy(batch_output, batch_target);
-                
-//                 // Backward pass - no need for extra scaling
-//                 loss->grad = std::vector<float>(loss->data.size(), 1.0f);
-//                 loss->backward();
-                
-//                 // Update weights
-//                 optimizer.step();
-                
-//                 // Compute batch statistics
-//                 float batch_loss = loss->data[0];  // Already averaged in cross_entropy
-//                 epoch_loss += batch_loss * current_batch_size;
-                
-//                 // Calculate accuracy
-//                 for (size_t i = 0; i < current_batch_size; i++) {
-//                     size_t predicted = 0;
-//                     float max_val = batch_output->data[i * 10];
-//                     for (size_t j = 1; j < 10; j++) {
-//                         if (batch_output->data[i * 10 + j] > max_val) {
-//                             max_val = batch_output->data[i * 10 + j];
-//                             predicted = j;
-//                         }
+//     std::cout << "Loading MNIST dataset..." << std::endl;
+//     auto [inputs, targets] = load_mnist("/vol/ecrg-solar/woodj4/autograd/mnist_train.csv", 1000);
+//     std::cout << "Loaded " << inputs.size() << " samples" << std::endl;
+
+//     // Model architecture
+//     auto model = std::make_shared<Sequential>();
+//     model->add(std::make_shared<Conv2D>(1, 16, 3, 1, 1));
+//     model->add(std::make_shared<BatchNorm2D>(16));
+//     model->add(std::make_shared<ReLU>());
+//     model->add(std::make_shared<Dropout>(0.1));
+//     model->add(std::make_shared<Conv2D>(16, 32, 3, 2, 1));
+//     model->add(std::make_shared<BatchNorm2D>(32));
+//     model->add(std::make_shared<ReLU>());
+//     model->add(std::make_shared<Dropout>(0.1));
+//     model->add(std::make_shared<MaxPool2D>(2, 2));            
+//     model->add(std::make_shared<Flatten>());                   
+//     model->add(std::make_shared<Linear>(7*7*32, 128));        
+//     model->add(std::make_shared<ReLU>());
+//     model->add(std::make_shared<Linear>(128, 10));         
+//     model->add(std::make_shared<Softmax>());
+    
+//     auto parameters = model->get_parameters();
+//     SGD optimizer(parameters, 0.001f);
+
+//     const size_t epochs = 50;
+//     const size_t batch_size = 64;
+//     const size_t print_every = 1;
+
+//     for (size_t epoch = 0; epoch < epochs; epoch++) {
+//         float epoch_loss = 0.0f;
+//         size_t correct = 0;
+//         size_t total = 0;
+
+//         std::vector<size_t> indices(inputs.size());
+//         std::iota(indices.begin(), indices.end(), 0);
+//         std::random_device rd;
+//         std::mt19937 gen(rd());
+//         std::shuffle(indices.begin(), indices.end(), gen);
+
+//         size_t num_batches = (inputs.size() + batch_size - 1) / batch_size;
+
+//         for (size_t batch = 0; batch < num_batches; batch++) {
+//             size_t current_batch_size = std::min(batch_size, inputs.size() - batch * batch_size);
+
+//             std::vector<float> batch_input_data;
+//             std::vector<float> batch_target_data;
+//             batch_input_data.reserve(current_batch_size * 784);
+//             batch_target_data.reserve(current_batch_size * 10);
+
+//             for (size_t i = 0; i < current_batch_size; i++) {
+//                 size_t idx = indices[batch * batch_size + i];
+//                 batch_input_data.insert(batch_input_data.end(), inputs[idx]->data.begin(), inputs[idx]->data.end());
+
+//                 std::vector<float> one_hot(10, 0.0f);
+//                 one_hot[static_cast<size_t>(targets[idx]->data[0])] = 1.0f;
+//                 batch_target_data.insert(batch_target_data.end(), one_hot.begin(), one_hot.end());
+//             }
+
+//             auto batch_input = std::make_shared<Tensor>(batch_input_data, current_batch_size, 784, true);
+//             auto batch_target = std::make_shared<Tensor>(batch_target_data, current_batch_size, 10, true);
+
+//             model->train();
+//             optimizer.zero_grad();
+//             auto batch_output = model->forward(batch_input);
+//             auto loss = Tensor::cross_entropy(batch_output, batch_target);
+
+//             loss->grad = std::vector<float>(loss->data.size(), 1.0f);
+//             loss->backward();
+//             optimizer.step();
+
+//             float batch_loss = loss->data[0];
+//             epoch_loss += batch_loss * current_batch_size;
+
+//             // Track correct predictions per batch
+//             size_t batch_correct = 0;
+//             for (size_t i = 0; i < current_batch_size; i++) {
+//                 size_t predicted = 0;
+//                 float max_val = batch_output->data[i * 10];
+//                 for (size_t j = 1; j < 10; j++) {
+//                     if (batch_output->data[i * 10 + j] > max_val) {
+//                         max_val = batch_output->data[i * 10 + j];
+//                         predicted = j;
 //                     }
-                    
-//                     size_t actual = static_cast<size_t>(targets[indices[batch * batch_size + i]]->data[0]);
-//                     if (predicted == actual) {
-//                         correct++;
-//                     }
-//                     total++;
 //                 }
-                
-//                 if (batch % print_every == 0) {
-//                     float accuracy = static_cast<float>(correct) / total * 100.0f;
-//                     std::cout << "Epoch " << epoch << " - Batch " << batch 
-//                              << "/" << num_batches 
-//                              << " - Loss: " << batch_loss
-//                              << " - Accuracy: " << accuracy << "%" 
-//                              << std::endl;
+//                 // Get actual label
+//                 size_t actual = static_cast<size_t>(targets[indices[batch * batch_size + i]]->data[0]);
+//                 if (predicted == actual) {
+//                     batch_correct++;
 //                 }
 //             }
-            
-//             float accuracy = static_cast<float>(correct) / total * 100.0f;
-//             float avg_loss = epoch_loss / total;
-//             std::cout << "\nEpoch " << epoch << " completed"
-//                      << " - Average Loss: " << avg_loss
-//                      << " - Accuracy: " << accuracy << "%\n" 
-//                      << std::endl;
+//             correct += batch_correct;
+//             total += current_batch_size;
+
+//             if (batch % print_every == 0) {
+//                 float accuracy = static_cast<float>(correct) / total * 100.0f;
+//                 std::cout << "Epoch " << epoch << " - Batch " << batch << "/" << num_batches << " - Loss: " << batch_loss << " - Accuracy: " << accuracy << "%" << std::endl;
+//             }
 //         }
-        
-//     } catch (const std::exception& e) {
-//         std::cerr << "Error: " << e.what() << std::endl;
-//         return 1;
 //     }
-    
-//     return 0;
 // }
+
+bool isAllZeros(const std::vector<float>& vec) {
+    return std::all_of(vec.begin(), vec.end(), [](float value) {
+        return value == 0.0f;
+    });
+}
+
+int main() {
+    try {
+        // Load dataset
+        std::cout << "Loading MNIST dataset..." << std::endl;
+        auto [inputs, targets] = load_mnist("../mnist_train.csv", 1000);
+        std::cout << "Loaded " << inputs.size() << " samples" << std::endl;
+        
+        // Create model with larger architecture
+        auto model = std::make_shared<Sequential>();
+        model->add(std::make_shared<Linear>(784, 512, true));  // Larger first layer
+        model->add(std::make_shared<ReLU>());
+        model->add(std::make_shared<Linear>(512, 256, true));  // Larger second layer
+        model->add(std::make_shared<ReLU>());
+        model->add(std::make_shared<Linear>(256, 10, true));
+        model->add(std::make_shared<Softmax>());
+        
+        auto parameters = model->get_parameters();
+        SGD optimizer(parameters, 0.01f);  // Increased learning rate
+        
+        const size_t epochs = 10;
+        const size_t batch_size = 32;
+        const size_t print_every = 1;
+        
+        for (size_t epoch = 0; epoch < epochs; epoch++) {
+            float epoch_loss = 0.0f;
+            size_t correct = 0;
+            size_t total = 0;
+            
+            // Shuffle dataset
+            std::vector<size_t> indices(inputs.size());
+            std::iota(indices.begin(), indices.end(), 0);
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::shuffle(indices.begin(), indices.end(), gen);
+            
+            // Handle partial batches correctly
+            size_t num_batches = (inputs.size() + batch_size - 1) / batch_size;
+            
+            for (size_t batch = 0; batch < num_batches; batch++) {
+                // Calculate actual batch size (might be smaller for last batch)
+                size_t current_batch_size = std::min(batch_size, 
+                                                   inputs.size() - batch * batch_size);
+                
+                // Create batch tensors
+                std::vector<float> batch_input_data;
+                std::vector<float> batch_target_data;
+                batch_input_data.reserve(current_batch_size * 784);
+                batch_target_data.reserve(current_batch_size * 10);
+                
+                for (size_t i = 0; i < current_batch_size; i++) {
+                    size_t idx = indices[batch * batch_size + i];
+                    batch_input_data.insert(batch_input_data.end(), 
+                                          inputs[idx]->data.begin(), 
+                                          inputs[idx]->data.end());
+                    
+                    // Create one-hot target
+                    std::vector<float> one_hot(10, 0.0f);
+                    one_hot[static_cast<size_t>(targets[idx]->data[0])] = 1.0f;
+                    batch_target_data.insert(batch_target_data.end(),
+                                           one_hot.begin(),
+                                           one_hot.end());
+                }
+                
+                auto batch_input = std::make_shared<Tensor>(batch_input_data, 
+                                                          current_batch_size, 784, true);
+                auto batch_target = std::make_shared<Tensor>(batch_target_data, 
+                                                           current_batch_size, 10, true);
+                
+                // Forward pass
+                optimizer.zero_grad();
+                auto batch_output = model->forward(batch_input);
+                auto loss = Tensor::cross_entropy(batch_output, batch_target);
+                
+                // Backward pass - no need for extra scaling
+                loss->grad = std::vector<float>(loss->data.size(), 1.0f);
+                loss->backward();
+                
+                // Update weights
+                optimizer.step();
+                
+                // Compute batch statistics
+                float batch_loss = loss->data[0];  // Already averaged in cross_entropy
+                epoch_loss += batch_loss * current_batch_size;
+                
+                // Calculate accuracy
+                for (size_t i = 0; i < current_batch_size; i++) {
+                    size_t predicted = 0;
+                    float max_val = batch_output->data[i * 10];
+                    for (size_t j = 1; j < 10; j++) {
+                        if (batch_output->data[i * 10 + j] > max_val) {
+                            max_val = batch_output->data[i * 10 + j];
+                            predicted = j;
+                        }
+                    }
+                    
+                    size_t actual = static_cast<size_t>(targets[indices[batch * batch_size + i]]->data[0]);
+                    if (predicted == actual) {
+                        correct++;
+                    }
+                    total++;
+                }
+                
+                if (batch % print_every == 0) {
+
+                    std::cout << "Gradients: " << std::endl;
+                    for (auto param: parameters) {
+                        if (isAllZeros(param->grad)) {
+                            std::cout << "Creation op: " << param->creation_op << std::endl;
+                            std::cout << "Shape: (" << param->rows << "," << param->cols << ")" << std::endl;
+                        }
+                    } 
+
+                    float accuracy = static_cast<float>(correct) / total * 100.0f;
+                    std::cout << "Epoch " << epoch << " - Batch " << batch 
+                             << "/" << num_batches 
+                             << " - Loss: " << batch_loss
+                             << " - Accuracy: " << accuracy << "%" 
+                             << std::endl;
+                }
+            }
+            
+            float accuracy = static_cast<float>(correct) / total * 100.0f;
+            float avg_loss = epoch_loss / total;
+            std::cout << "\nEpoch " << epoch << " completed"
+                     << " - Average Loss: " << avg_loss
+                     << " - Accuracy: " << accuracy << "%\n" 
+                     << std::endl;
+        }
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+    
+    return 0;
+}
 
 
 // int main() {
@@ -1489,8 +1503,8 @@ int main() {
 //     auto parameters = model->get_parameters();
 //     SGD optimizer(parameters, 0.1f); 
 
-//     const size_t epochs = 1000;
-//     const size_t print_every = 100;
+//     const size_t epochs = 100000;
+//     const size_t print_every = 1000;
 
 //     for (size_t epoch = 0; epoch < epochs; epoch++) {
 //         std::shared_ptr<Tensor> loss = std::make_shared<Tensor>(std::vector<float>{0.0f}, 1, 1, true);

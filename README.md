@@ -9,13 +9,13 @@ https://en.wikipedia.org/wiki/Automatic_differentiation
 First compile the code.
 
 ```bash
-$ g++ main.cpp -o output
+$ g++ tensor.cpp -o output
 ```
 
 (Optional) compile with multi-threading support.
 
 ```bash
-$ g++ -fopenmp -O3 main.cpp -o output
+$ g++ -fopenmp -O3 tensor.cpp -o output
 ```
 
 Then run
