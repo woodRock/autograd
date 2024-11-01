@@ -1,5 +1,6 @@
 // tensor_cuda.cu
 #include <cuda_runtime.h>
+#include <cstring>  // for memcpy
 #include <memory>
 #include <vector>
 #include <iostream>
@@ -392,6 +393,15 @@ __global__ void cross_entropy_backward_kernel(const float* targets, const float*
 #define TILE_SIZE 16
 #define MAX_KERNEL_SIZE 7  // Adjust based on your max kernel size
 
+// Optimized CNN CUDA implementation
+
+// 1. Use shared memory for input and kernel tiles
+#define TILE_SIZE 16
+#define WARP_SIZE 32
+#define MAX_THREADS_PER_BLOCK 1024
+#define ELEMENTS_PER_THREAD 4
+
+// Optimized convolution forward kernel with improved memory access patterns
 __global__ void conv2d_forward_kernel_optimized(
     const float* __restrict__ input,
     const float* __restrict__ weights,
@@ -408,89 +418,174 @@ __global__ void conv2d_forward_kernel_optimized(
     const size_t output_height,
     const size_t output_width) {
     
-    __shared__ float shared_input[TILE_SIZE][TILE_SIZE];
-    __shared__ float shared_weights[MAX_KERNEL_SIZE][MAX_KERNEL_SIZE];
+    // Shared memory for input and weight tiles
+    extern __shared__ float shared_mem[];
+    float* shared_input = shared_mem;
+    float* shared_weights = shared_mem + TILE_SIZE * TILE_SIZE;
     
-    // Block indices
-    const int bx = blockIdx.x;  // batch index
-    const int by = blockIdx.y;  // output channel index
-    const int bz = blockIdx.z;  // output spatial position
-    
-    // Thread indices
+    // Calculate thread and block indices
     const int tx = threadIdx.x;
     const int ty = threadIdx.y;
+    const int bx = blockIdx.x;
+    const int by = blockIdx.y;
+    const int bz = blockIdx.z;
     
     // Output position
-    const int oh = bz / output_width;
-    const int ow = bz % output_width;
+    const int batch_idx = bx;
+    const int out_channel = by;
+    const int out_y = (bz / output_width) * TILE_SIZE + ty;
+    const int out_x = (bz % output_width) * TILE_SIZE + tx;
     
-    // Early exit if out of bounds
-    if (bx >= batch_size || by >= out_channels || oh >= output_height || ow >= output_width)
-        return;
-    
-    // Initialize accumulator
-    float sum = 0.0f;
+    // Register to accumulate partial results
+    float partial_sum = 0.0f;
     
     // Loop over input channels
-    for (int ic = 0; ic < in_channels; ic++) {
-        // Load kernel weights into shared memory
+    for (int in_c = 0; in_c < in_channels; ++in_c) {
+        // Load input tile into shared memory
+        #pragma unroll
+        for (int i = 0; i < TILE_SIZE; i += WARP_SIZE) {
+            int y = out_y * stride - padding + i;
+            int x = out_x * stride - padding;
+            
+            if (y >= 0 && y < height && x >= 0 && x < width) {
+                shared_input[ty * TILE_SIZE + tx] = input[
+                    batch_idx * (in_channels * height * width) +
+                    in_c * (height * width) +
+                    y * width + x
+                ];
+            } else {
+                shared_input[ty * TILE_SIZE + tx] = 0.0f;
+            }
+        }
+        
+        // Load weights into shared memory
         if (tx < kernel_size && ty < kernel_size) {
-            shared_weights[tx][ty] = weights[
-                by * (in_channels * kernel_size * kernel_size) +
-                ic * (kernel_size * kernel_size) +
-                tx * kernel_size + ty
+            shared_weights[ty * kernel_size + tx] = weights[
+                out_channel * (in_channels * kernel_size * kernel_size) +
+                in_c * (kernel_size * kernel_size) +
+                ty * kernel_size + tx
             ];
         }
+        
         __syncthreads();
         
-        // Input starting position for this output element
-        const int ih_start = oh * stride - padding;
-        const int iw_start = ow * stride - padding;
-        
-        // Load input tile into shared memory
-        for (int i = tx; i < TILE_SIZE; i += blockDim.x) {
-            for (int j = ty; j < TILE_SIZE; j += blockDim.y) {
-                const int ih = ih_start + i;
-                const int iw = iw_start + j;
-                
-                if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
-                    shared_input[i][j] = input[
-                        bx * (in_channels * height * width) +
-                        ic * (height * width) +
-                        ih * width + iw
-                    ];
-                } else {
-                    shared_input[i][j] = 0.0f;
-                }
-            }
-        }
-        __syncthreads();
-        
-        // Compute convolution for this input channel
+        // Compute convolution for this tile
         #pragma unroll
-        for (int kh = 0; kh < kernel_size; kh++) {
+        for (int ky = 0; ky < kernel_size; ++ky) {
             #pragma unroll
-            for (int kw = 0; kw < kernel_size; kw++) {
-                const int ih = oh * stride + kh - padding;
-                const int iw = ow * stride + kw - padding;
+            for (int kx = 0; kx < kernel_size; ++kx) {
+                int y = out_y * stride - padding + ky;
+                int x = out_x * stride - padding + kx;
                 
-                if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
-                    sum += shared_input[kh][kw] * shared_weights[kh][kw];
+                if (y >= 0 && y < height && x >= 0 && x < width) {
+                    partial_sum += shared_input[(ty + ky) * TILE_SIZE + (tx + kx)] *
+                                 shared_weights[ky * kernel_size + kx];
                 }
             }
         }
+        
         __syncthreads();
     }
     
-    // Add bias and write output
-    if (tx == 0 && ty == 0) {
-        sum += bias[by];
-        const int output_idx = 
-            bx * (out_channels * output_height * output_width) +
-            by * (output_height * output_width) +
-            oh * output_width + ow;
-        output[output_idx] = sum;
+    // Write output with vectorized memory access
+    if (out_y < output_height && out_x < output_width) {
+        int output_idx = 
+            batch_idx * (out_channels * output_height * output_width) +
+            out_channel * (output_height * output_width) +
+            out_y * output_width + out_x;
+        
+        output[output_idx] = partial_sum + bias[out_channel];
     }
+}
+
+// Optimized implementation of Conv2D forward pass
+std::shared_ptr<Tensor> Conv2D::forward(std::shared_ptr<Tensor> input) {
+    size_t batch_size = input->rows;
+    size_t height = static_cast<size_t>(std::sqrt(input->cols / in_channels));
+    size_t width = height;
+    
+    size_t output_height = (height + 2 * padding - kernel_size) / stride + 1;
+    size_t output_width = (width + 2 * padding - kernel_size) / stride + 1;
+    
+    // Create CUDA stream for asynchronous operations
+    cudaStream_t stream;
+    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    
+    // Use pinned memory for faster transfers
+    float *h_input, *h_weights, *h_bias, *h_output;
+    cudaHostAlloc(&h_input, input->data.size() * sizeof(float), cudaHostAllocDefault);
+    cudaHostAlloc(&h_weights, weights->data.size() * sizeof(float), cudaHostAllocDefault);
+    cudaHostAlloc(&h_bias, bias->data.size() * sizeof(float), cudaHostAllocDefault);
+    cudaHostAlloc(&h_output, batch_size * out_channels * output_height * output_width * sizeof(float), 
+                  cudaHostAllocDefault);
+    
+    // Copy data to pinned memory
+    std::memcpy(h_input, input->data.data(), input->data.size() * sizeof(float));
+    std::memcpy(h_weights, weights->data.data(), weights->data.size() * sizeof(float));
+    std::memcpy(h_bias, bias->data.data(), bias->data.size() * sizeof(float));
+    
+    // Allocate device memory
+    float *d_input, *d_weights, *d_bias, *d_output;
+    cudaMalloc(&d_input, input->data.size() * sizeof(float));
+    cudaMalloc(&d_weights, weights->data.size() * sizeof(float));
+    cudaMalloc(&d_bias, bias->data.size() * sizeof(float));
+    cudaMalloc(&d_output, batch_size * out_channels * output_height * output_width * sizeof(float));
+    
+    // Asynchronous memory transfers
+    cudaMemcpyAsync(d_input, h_input, input->data.size() * sizeof(float), 
+                    cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_weights, h_weights, weights->data.size() * sizeof(float), 
+                    cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_bias, h_bias, bias->data.size() * sizeof(float), 
+                    cudaMemcpyHostToDevice, stream);
+    
+    // Calculate optimal grid and block dimensions
+    dim3 block_dim(TILE_SIZE, TILE_SIZE);
+    dim3 grid_dim(
+        batch_size,
+        out_channels,
+        (output_height * output_width + TILE_SIZE * TILE_SIZE - 1) / (TILE_SIZE * TILE_SIZE)
+    );
+    
+    // Calculate shared memory size
+    size_t shared_mem_size = (TILE_SIZE * TILE_SIZE + kernel_size * kernel_size) * sizeof(float);
+    
+    // Launch kernel with stream
+    conv2d_forward_kernel_optimized<<<grid_dim, block_dim, shared_mem_size, stream>>>(
+        d_input, d_weights, d_bias, d_output,
+        batch_size, in_channels, out_channels,
+        height, width, kernel_size,
+        stride, padding, output_height, output_width
+    );
+    
+    // Asynchronous copy back to host
+    cudaMemcpyAsync(h_output, d_output, 
+                    batch_size * out_channels * output_height * output_width * sizeof(float),
+                    cudaMemcpyDeviceToHost, stream);
+    
+    // Synchronize stream
+    cudaStreamSynchronize(stream);
+    
+    // Create output tensor
+    std::vector<float> output_data(h_output, 
+                                 h_output + batch_size * out_channels * output_height * output_width);
+    
+    // Cleanup
+    cudaFreeHost(h_input);
+    cudaFreeHost(h_weights);
+    cudaFreeHost(h_bias);
+    cudaFreeHost(h_output);
+    cudaFree(d_input);
+    cudaFree(d_weights);
+    cudaFree(d_bias);
+    cudaFree(d_output);
+    cudaStreamDestroy(stream);
+    
+    auto output = std::make_shared<Tensor>(output_data, batch_size, 
+                                         out_channels * output_height * output_width,
+                                         true, "Conv2d");
+    output->parents = {input, weights, bias};
+    return output;
 }
 
 // CUDA kernel for convolution backward pass - input gradients
@@ -586,73 +681,6 @@ __global__ void conv2d_backward_weights_kernel(
                      kh * kernel_size + kw;
     grad_weights[weight_idx] = sum;
 }
-
-// Implementation of Conv2D forward pass
-// Optimized Conv2D forward implementation
-std::shared_ptr<Tensor> Conv2D::forward(std::shared_ptr<Tensor> input) {
-    size_t batch_size = input->rows;
-    size_t height = static_cast<size_t>(std::sqrt(input->cols / in_channels));
-    size_t width = height;
-    
-    size_t output_height = (height + 2 * padding - kernel_size) / stride + 1;
-    size_t output_width = (width + 2 * padding - kernel_size) / stride + 1;
-    
-    // Use cudaMallocAsync if available for better memory allocation
-    cudaStream_t stream;
-    cudaStreamCreate(&stream);
-    
-    // Create device memory with pinned memory for faster transfers
-    CUDAMemory d_input(input->data.size());
-    CUDAMemory d_weights(weights->data.size());
-    CUDAMemory d_bias(bias->data.size());
-    CUDAMemory d_output(batch_size * out_channels * output_height * output_width);
-    
-    // Asynchronous memory transfers
-    d_input.copyToDevice(input->data.data(), input->data.size());
-    d_weights.copyToDevice(weights->data.data(), weights->data.size());
-    d_bias.copyToDevice(bias->data.data(), bias->data.size());
-    
-    // Set optimized kernel dimensions
-    dim3 block_size(TILE_SIZE, TILE_SIZE);
-    dim3 grid_size(
-        batch_size,
-        out_channels,
-        output_height * output_width
-    );
-    
-    // Launch optimized kernel
-    conv2d_forward_kernel_optimized<<<grid_size, block_size, 0, stream>>>(
-        d_input.get(),
-        d_weights.get(),
-        d_bias.get(),
-        d_output.get(),
-        batch_size,
-        in_channels,
-        out_channels,
-        height,
-        width,
-        kernel_size,
-        stride,
-        padding,
-        output_height,
-        output_width
-    );
-    
-    // Copy result back to host asynchronously
-    std::vector<float> output_data(batch_size * out_channels * output_height * output_width);
-    d_output.copyToHost(output_data.data(), output_data.size());
-    
-    // Cleanup
-    cudaStreamDestroy(stream);
-    
-    // Create result tensor
-    auto output = std::make_shared<Tensor>(output_data, batch_size, 
-                                         out_channels * output_height * output_width,
-                                         true, "Conv2d");
-    output->parents = {input, weights, bias};
-    return output;
-}
-
 
 // CUDA kernel for maxpool2d forward pass
 __global__ void maxpool2d_forward_kernel(

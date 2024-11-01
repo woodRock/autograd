@@ -283,13 +283,19 @@ CMakeFiles/output.dir/src/tensor_cuda.cu.o: /vol/ecrg-solar/woodj4/autograd/src/
   /opt/cuda/targets/x86_64-linux/include/crt/host_defines.h \
   /opt/cuda/targets/x86_64-linux/include/crt/math_functions.h \
   /opt/cuda/targets/x86_64-linux/include/crt/math_functions.hpp \
+  /opt/cuda/targets/x86_64-linux/include/crt/mma.h \
+  /opt/cuda/targets/x86_64-linux/include/crt/mma.hpp \
   /opt/cuda/targets/x86_64-linux/include/crt/sm_70_rt.h \
   /opt/cuda/targets/x86_64-linux/include/crt/sm_70_rt.hpp \
   /opt/cuda/targets/x86_64-linux/include/crt/sm_80_rt.h \
   /opt/cuda/targets/x86_64-linux/include/crt/sm_80_rt.hpp \
   /opt/cuda/targets/x86_64-linux/include/crt/sm_90_rt.h \
   /opt/cuda/targets/x86_64-linux/include/crt/sm_90_rt.hpp \
+  /opt/cuda/targets/x86_64-linux/include/cuda_bf16.h \
+  /opt/cuda/targets/x86_64-linux/include/cuda_bf16.hpp \
   /opt/cuda/targets/x86_64-linux/include/cuda_device_runtime_api.h \
+  /opt/cuda/targets/x86_64-linux/include/cuda_fp16.h \
+  /opt/cuda/targets/x86_64-linux/include/cuda_fp16.hpp \
   /opt/cuda/targets/x86_64-linux/include/cuda_runtime.h \
   /opt/cuda/targets/x86_64-linux/include/cuda_runtime_api.h \
   /opt/cuda/targets/x86_64-linux/include/device_atomic_functions.h \
@@ -299,6 +305,10 @@ CMakeFiles/output.dir/src/tensor_cuda.cu.o: /vol/ecrg-solar/woodj4/autograd/src/
   /opt/cuda/targets/x86_64-linux/include/driver_functions.h \
   /opt/cuda/targets/x86_64-linux/include/driver_types.h \
   /opt/cuda/targets/x86_64-linux/include/library_types.h \
+  /opt/cuda/targets/x86_64-linux/include/mma.h \
+  /opt/cuda/targets/x86_64-linux/include/nv/detail/__preprocessor \
+  /opt/cuda/targets/x86_64-linux/include/nv/detail/__target_macros \
+  /opt/cuda/targets/x86_64-linux/include/nv/target \
   /opt/cuda/targets/x86_64-linux/include/sm_20_atomic_functions.h \
   /opt/cuda/targets/x86_64-linux/include/sm_20_atomic_functions.hpp \
   /opt/cuda/targets/x86_64-linux/include/sm_20_intrinsics.h \
@@ -516,6 +526,7 @@ CMakeFiles/output.dir/src/tensor_cuda.cu.o: /vol/ecrg-solar/woodj4/autograd/src/
   /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/cstdint \
   /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/cstdio \
   /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/cstdlib \
+  /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/cstring \
   /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/cwchar \
   /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/cwctype \
   /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/debug/assertions.h \
@@ -622,6 +633,12 @@ CMakeFiles/output.dir/src/tensor_cuda.cu.o: /vol/ecrg-solar/woodj4/autograd/src/
 
 /opt/cuda/targets/x86_64-linux/include/sm_20_intrinsics.hpp:
 
+/opt/cuda/targets/x86_64-linux/include/nv/target:
+
+/opt/cuda/targets/x86_64-linux/include/nv/detail/__preprocessor:
+
+/opt/cuda/targets/x86_64-linux/include/mma.h:
+
 /opt/cuda/targets/x86_64-linux/include/driver_functions.h:
 
 /opt/cuda/targets/x86_64-linux/include/device_types.h:
@@ -636,7 +653,13 @@ CMakeFiles/output.dir/src/tensor_cuda.cu.o: /vol/ecrg-solar/woodj4/autograd/src/
 
 /opt/cuda/targets/x86_64-linux/include/cuda_runtime.h:
 
+/opt/cuda/targets/x86_64-linux/include/cuda_fp16.hpp:
+
 /opt/cuda/targets/x86_64-linux/include/cuda_device_runtime_api.h:
+
+/opt/cuda/targets/x86_64-linux/include/cuda_bf16.hpp:
+
+/opt/cuda/targets/x86_64-linux/include/cuda_bf16.h:
 
 /opt/cuda/targets/x86_64-linux/include/crt/sm_90_rt.hpp:
 
@@ -645,6 +668,8 @@ CMakeFiles/output.dir/src/tensor_cuda.cu.o: /vol/ecrg-solar/woodj4/autograd/src/
 /opt/cuda/targets/x86_64-linux/include/crt/sm_80_rt.h:
 
 /opt/cuda/targets/x86_64-linux/include/crt/sm_70_rt.h:
+
+/opt/cuda/targets/x86_64-linux/include/crt/mma.h:
 
 /opt/cuda/targets/x86_64-linux/include/crt/host_defines.h:
 
@@ -724,6 +749,8 @@ CMakeFiles/output.dir/src/tensor_cuda.cu.o: /vol/ecrg-solar/woodj4/autograd/src/
 
 /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/backward/auto_ptr.h:
 
+/usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/cstring:
+
 /usr/include/features-time64.h:
 
 /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/pstl/glue_numeric_defs.h:
@@ -745,6 +772,8 @@ CMakeFiles/output.dir/src/tensor_cuda.cu.o: /vol/ecrg-solar/woodj4/autograd/src/
 /usr/include/wchar.h:
 
 /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/cassert:
+
+/opt/cuda/targets/x86_64-linux/include/crt/mma.hpp:
 
 /usr/include/sys/cdefs.h:
 
@@ -1142,11 +1171,15 @@ CMakeFiles/output.dir/src/tensor_cuda.cu.o: /vol/ecrg-solar/woodj4/autograd/src/
 
 /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/tr1/hypergeometric.tcc:
 
+/opt/cuda/targets/x86_64-linux/include/nv/detail/__target_macros:
+
 /usr/include/bits/pthread_stack_min-dynamic.h:
 
 /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/cwchar:
 
 /opt/cuda/targets/x86_64-linux/include/sm_32_intrinsics.h:
+
+/opt/cuda/targets/x86_64-linux/include/cuda_fp16.h:
 
 /usr/lib/gcc/x86_64-pc-linux-gnu/13.3.0/include/c++/typeinfo:
 
